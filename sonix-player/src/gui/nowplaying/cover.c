@@ -14,6 +14,7 @@
 #include "src/system/db/sqlite3.h"
 
 #include "src/system/library/albumart.h"
+#include "src/system/library/library.h"
 #include "src/system/image/art_shrink.h"
 #include "src/system/image/jpeg_planes.h"
 #include "src/system/image/jpeg_scaled.h"
@@ -1986,7 +1987,14 @@ void cover_cache_reopen_if_replaced(void) {
 	pthread_mutex_unlock(&thumb_db_lock);
 }
 
+// Declared below with the warm walk; needed here so a card change can cancel it
+// before the thumb database handle is closed.
+void cover_warm_stop(void);
+
 void cover_set_cache_dir(const char *sd_root) {
+	// Drop any in-flight warm before the handle under it goes away.
+	cover_warm_stop();
+
 	pthread_mutex_lock(&thumb_db_lock);
 
 	if (thumb_db) {
@@ -2306,6 +2314,99 @@ bool cover_thumb_load(const char *path, bool is_dir, int size, cover_image_t *ou
 	}
 
 	return built == COVER_BUILD_OK;
+}
+
+// ---------------------------------------------------------------------------
+// Post-scan album thumb warm
+//
+// The library scan only indexes tags. List covers are filled lazily on first
+// scroll, which makes the first pass over Artists/Genres stutter on a big card.
+// After a finished scan, walk one representative track per album (the same
+// path the album rows already carry) and run cover_thumb_load at the list
+// size, on SCHED_IDLE so browsing and playback stay ahead of it.
+// ---------------------------------------------------------------------------
+
+// Matches THUMB_SIZE in medialist.c -- the size every album/artist row asks
+// the coverloader for. Bigger boxes (carousel, album head) stay on demand.
+#define COVER_WARM_SIZE 72
+
+static pthread_mutex_t warm_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_t warm_thread;
+static volatile bool warm_cancel;
+static bool warm_alive;
+
+typedef struct {
+	int seen;
+	int with_art;
+} warm_stats_t;
+
+static bool warm_album_cb(const char *name, const char *path, const char *artist, void *user) {
+	(void)name;
+	(void)artist;
+	warm_stats_t *stats = user;
+
+	if (warm_cancel) {
+		return false;
+	}
+	if (!path || !path[0]) {
+		return true;
+	}
+
+	stats->seen++;
+
+	// Disk hit (picture or cached "none") returns without a decode; only a
+	// miss pays. Free any pixels so the warm walk never holds more than one
+	// thumb at a time.
+	cover_image_t img;
+	if (cover_thumb_load(path, false, COVER_WARM_SIZE, &img)) {
+		stats->with_art++;
+		cover_free(&img);
+	}
+	return !warm_cancel;
+}
+
+static void *warm_thread_main(void *arg) {
+	(void)arg;
+	thread_be_background("cover warm");
+
+	warm_stats_t stats = {0};
+	if (library_is_open()) {
+		library_for_each(LIBRARY_LIST_ALBUMS, LIBRARY_FILTER_NONE, NULL, warm_album_cb, &stats);
+	}
+
+	if (warm_cancel) {
+		printf("cover: thumb warm stopped (%d albums looked at)\n", stats.seen);
+	} else {
+		printf("cover: thumb warm done (%d albums, %d with art at %d px)\n", stats.seen, stats.with_art,
+			   COVER_WARM_SIZE);
+	}
+
+	pthread_mutex_lock(&warm_lock);
+	warm_alive = false;
+	pthread_mutex_unlock(&warm_lock);
+	return NULL;
+}
+
+void cover_warm_stop(void) { warm_cancel = true; }
+
+void cover_warm_start(void) {
+	pthread_mutex_lock(&warm_lock);
+	if (warm_alive) {
+		// A walk is already filling the cache; let it finish. A later Detect
+		// changes kick would only re-hit SQLite for albums already done.
+		pthread_mutex_unlock(&warm_lock);
+		return;
+	}
+	warm_cancel = false;
+	if (pthread_create(&warm_thread, NULL, warm_thread_main, NULL) != 0) {
+		pthread_mutex_unlock(&warm_lock);
+		fprintf(stderr, "cover: thumb warm thread refused\n");
+		return;
+	}
+	pthread_detach(warm_thread);
+	warm_alive = true;
+	pthread_mutex_unlock(&warm_lock);
+	printf("cover: thumb warm started (one track per album @ %d px)\n", COVER_WARM_SIZE);
 }
 
 // ---------------------------------------------------------------------------

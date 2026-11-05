@@ -2741,11 +2741,24 @@ static void list_sql(char *sql, size_t size, const char *select, library_list_t 
 	// a lookup and not a scan.
 	if (kind == LIBRARY_LIST_ALBUMS && col && value &&
 		(filter == LIBRARY_FILTER_ARTIST || filter == LIBRARY_FILTER_ALBUM_ARTIST || filter == LIBRARY_FILTER_GENRE)) {
+		// Same year/date/name orders the flat Albums list uses; without this
+		// branch an artist's records always came back A–Z regardless of order.
+		const char *by_album = list_uses_sortkey(kind) ? "sortkey" : "album COLLATE listorder";
+		char order_by[192];
+		if (order == LIBRARY_ORDER_YEAR) {
+			snprintf(order_by, sizeof(order_by), "%s, %s", YEAR_KEY_UP(ALBUM_GROUP_YEAR), by_album);
+		} else if (order == LIBRARY_ORDER_YEAR_DESC) {
+			snprintf(order_by, sizeof(order_by), "%s, %s", YEAR_KEY_DOWN(ALBUM_GROUP_YEAR), by_album);
+		} else if (order == LIBRARY_ORDER_ADDED) {
+			snprintf(order_by, sizeof(order_by), ALBUM_GROUP_NEWEST ", %s", by_album);
+		} else {
+			snprintf(order_by, sizeof(order_by), "%s", by_album);
+		}
 		snprintf(sql, size,
-				 "SELECT %s FROM ALBUM_GROUP_TABLE WHERE album <> ''"
-				 " AND (album, album_key) IN (SELECT album, album_key FROM MEDIA_TABLE WHERE %s)"
+				 "SELECT %s FROM ALBUM_GROUP_TABLE g WHERE g.album <> ''"
+				 " AND (g.album, g.album_key) IN (SELECT album, album_key FROM MEDIA_TABLE WHERE %s)"
 				 " ORDER BY %s",
-				 select, filter_where(filter), list_uses_sortkey(kind) ? "sortkey" : "album COLLATE listorder");
+				 select, filter_where(filter), order_by);
 		return;
 	}
 

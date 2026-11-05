@@ -530,19 +530,34 @@ static bool sort_can_date(library_list_t kind, library_filter_t filter) {
 		   filter == LIBRARY_FILTER_NONE;
 }
 
-// The lists that can run by release year: every track and every record. An
-// artist has no year of their own -- the first record and the last are both
-// fair answers -- so the name lists stay out.
+// The lists that can run by release year: every track, every record, and an
+// artist's / genre's records. An artist name list has no year of its own.
 static bool sort_can_year(library_list_t kind, library_filter_t filter) {
-	return (kind == LIBRARY_LIST_TRACKS || kind == LIBRARY_LIST_ALBUMS) && filter == LIBRARY_FILTER_NONE;
+	if (kind == LIBRARY_LIST_TRACKS && filter == LIBRARY_FILTER_NONE) {
+		return true;
+	}
+	if (kind == LIBRARY_LIST_ALBUMS &&
+		(filter == LIBRARY_FILTER_NONE || filter == LIBRARY_FILTER_ARTIST ||
+		 filter == LIBRARY_FILTER_ALBUM_ARTIST || filter == LIBRARY_FILTER_GENRE)) {
+		return true;
+	}
+	return false;
 }
 
 // The order a list is opened with, and whether the handle reads it backwards.
 // Z-A and newest first are the ascending list read backwards; by year the
 // database runs it either way itself, so the rows without a year stay at the
 // end in both.
+//
+// Minimal R1: album lists always open by year ascending (DATE tags trimmed to
+// YYYY at scan time). The corner sort can still flip them newest-first.
 static void sort_order_for(library_list_t kind, library_filter_t filter, library_order_t *order, bool *desc) {
 	bool reversed = sort_is_desc(kind);
+	if (kind == LIBRARY_LIST_ALBUMS && sort_can_year(kind, filter)) {
+		*order = reversed ? LIBRARY_ORDER_YEAR_DESC : LIBRARY_ORDER_YEAR;
+		*desc = false;
+		return;
+	}
 	if (sort_can_year(kind, filter) && sort_is_year(kind)) {
 		*order = reversed ? LIBRARY_ORDER_YEAR_DESC : LIBRARY_ORDER_YEAR;
 		*desc = false;

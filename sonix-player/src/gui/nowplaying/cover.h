@@ -217,6 +217,13 @@ bool cover_thumb_load(const char *path, bool is_dir, int size, cover_image_t *ou
 // affordable and a hundred decodes are not.
 bool cover_thumb_cached(const char *path, int size, cover_image_t *out);
 
+// After a library scan: walk one representative track per album and fill the
+// on-disk thumb cache at list size (72), on an idle-priority thread. Cache hits
+// are a cheap read, so a second kick (Detect changes that added tracks) is
+// fine. Stop cancels the walk; safe to call when nothing is running.
+void cover_warm_start(void);
+void cover_warm_stop(void);
+
 // ---------------------------------------------------------------------------
 // Book covers
 //

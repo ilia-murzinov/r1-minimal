@@ -16,6 +16,33 @@
 #include <string.h>
 #include <sys/stat.h>
 
+// DATE / TDRC / ICRD often carry a full day ("2020-03-15") or a compact
+// YYYYMMDD. The index only stores a year, so take the leading four digits and
+// reject anything that is not a plausible calendar year.
+static int tag_year_trim(const char *s) {
+	if (!s) {
+		return 0;
+	}
+	while (*s == ' ' || *s == '\t') {
+		s++;
+	}
+	char buf[5];
+	int n = 0;
+	while (n < 4 && s[n] >= '0' && s[n] <= '9') {
+		buf[n] = s[n];
+		n++;
+	}
+	if (n != 4) {
+		return 0;
+	}
+	buf[4] = '\0';
+	int year = (int)strtol(buf, NULL, 10);
+	if (year < 1000 || year > 9999) {
+		return 0;
+	}
+	return year;
+}
+
 // Standard ID3v1 genre list, used to resolve numeric genre references from
 // both ID3v1 tags and ID3v2 TCON frames written in the old "(N)" style. Past
 // "Hard Rock" are Winamp's additions, which every tagger since has written.
@@ -438,12 +465,13 @@ static void apply_vorbis_comment(song_metadata_t *out, const char *comment, size
 		out->disc_number = (int)strtol(num_buf, NULL, 10);
 		return;
 	} else if (strcmp(key, "DATE") == 0 || (strcmp(key, "YEAR") == 0 && out->year == 0)) {
-		// YEAR, likewise, only where there is no DATE.
+		// YEAR, likewise, only where there is no DATE. DATE/TDRC often carry a
+		// full calendar day ("2020-03-15"); keep only the year.
 		char num_buf[16];
 		size_t n = value_len < sizeof(num_buf) - 1 ? value_len : sizeof(num_buf) - 1;
 		memcpy(num_buf, value, n);
 		num_buf[n] = '\0';
-		out->year = (int)strtol(num_buf, NULL, 10);
+		out->year = tag_year_trim(num_buf);
 		return;
 	} else if (strncmp(key, "REPLAYGAIN_", 11) == 0) {
 		replaygain_field(out, key, value, value_len);
@@ -1428,10 +1456,10 @@ static bool read_id3v2(FILE *f, song_metadata_t *out) {
 				out->disc_number = (int)strtol(decoded, NULL, 10);
 			} else if (strcmp(frame_id, "TYER") == 0 || strcmp(frame_id, "TDRC") == 0) {
 				if (out->year == 0)
-					out->year = (int)strtol(decoded, NULL, 10);
+					out->year = tag_year_trim(decoded);
 			} else if (strcmp(frame_id, "TORY") == 0 || strcmp(frame_id, "TDOR") == 0) {
 				// The original release, for a tag that has no other year.
-				original_year = (int)strtol(decoded, NULL, 10);
+				original_year = tag_year_trim(decoded);
 			} else if (strcmp(frame_id, "MVNM") == 0) {
 				if (!out->series[0])
 					copy_bounded(out->series, sizeof(out->series), decoded);
@@ -1984,7 +2012,7 @@ static void read_wav_info(FILE *f, off_t pos, off_t list_end, song_metadata_t *i
 		} else if (memcmp(h, "IGNR", 4) == 0) {
 			info_text(value, read_size, info->genre, sizeof(info->genre));
 		} else if (memcmp(h, "ICRD", 4) == 0) {
-			info->year = (int)strtol(value, NULL, 10);
+			info->year = tag_year_trim(value);
 		} else if (memcmp(h, "ITRK", 4) == 0 || memcmp(h, "IPRT", 4) == 0) {
 			// "3" or "3/12"; strtol stops at the slash.
 			if (info->track_number == 0) {
@@ -2147,7 +2175,7 @@ static void caf_info_entry(song_metadata_t *out, const char *key, const char *va
 	} else if (strcasecmp(key, "track number") == 0 || strcasecmp(key, "track") == 0) {
 		out->track_number = (int)strtol(value, NULL, 10);
 	} else if (strcasecmp(key, "year") == 0 || (strcasecmp(key, "recorded date") == 0 && out->year == 0)) {
-		out->year = (int)strtol(value, NULL, 10);
+		out->year = tag_year_trim(value);
 	}
 }
 
@@ -2216,7 +2244,11 @@ static void read_mp4_metadata(const char *filepath, song_metadata_t *out) {
 	out->compilation = mp4_tag_compilation(m);
 	snprintf(out->album, sizeof(out->album), "%s", mp4_tag_album(m));
 	snprintf(out->genre, sizeof(out->genre), "%s", mp4_tag_genre(m));
-	out->year = mp4_tag_year(m);
+	{
+		char ybuf[16];
+		snprintf(ybuf, sizeof(ybuf), "%d", mp4_tag_year(m));
+		out->year = tag_year_trim(ybuf);
+	}
 	snprintf(out->series, sizeof(out->series), "%s", mp4_tag_series(m));
 	snprintf(out->series_part, sizeof(out->series_part), "%s", mp4_tag_series_part(m));
 	const char *lyrics = mp4_tag_lyrics(m);
@@ -2370,7 +2402,7 @@ static void read_sidecar_tags(const char *filepath, song_metadata_t *out) {
 		} else if (strcmp(key, "disc") == 0) {
 			out->disc_number = atoi(value);
 		} else if (strcmp(key, "year") == 0) {
-			out->year = atoi(value);
+			out->year = tag_year_trim(value);
 		}
 	}
 	fclose(f);

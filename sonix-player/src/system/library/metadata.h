@@ -11,7 +11,7 @@ typedef struct {
 	char genre[128];
 	int track_number; // 0 if unknown
 	int disc_number;  // 0 if unknown, which is read as disc one; see below
-	int year;		  // 0 if unknown
+	int year;		  // 0 if unknown; full DATE/TDRC values are trimmed to YYYY
 	bool has_tags;	  // true if any tag field was found
 
 	// Marked as a compilation: COMPILATION (or ITUNESCOMPILATION) in Vorbis

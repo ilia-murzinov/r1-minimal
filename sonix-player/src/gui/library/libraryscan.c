@@ -18,6 +18,7 @@
 #include "src/gui/shell/theme.h"
 #include "src/gui/shell/topbar.h"
 #include "src/gui/shell/toast.h"
+#include "src/gui/nowplaying/cover.h"
 #include "src/system/playback/playlist.h"
 #include "src/system/core/lang.h"
 #include "src/system/library/library.h"
@@ -91,6 +92,9 @@ void libraryscan_begin(void) {
 	lv_label_set_text(status_label, tr("libraryscan_tracks_found"));
 	lv_obj_set_hidden(ok_button, true);
 	lv_obj_set_hidden(cancel_button, false);
+
+	// A new scan owns the card; drop any warm left over from the last one.
+	cover_warm_stop();
 
 	if (!library_scan_start(sd_root)) {
 		// Nothing to scan (no card, or a scan is somehow already going).
@@ -474,6 +478,7 @@ static void update_note_cb(void *user) {
 
 	switch (note->event) {
 	case LIBRARY_UPDATE_LOOKING:
+		cover_warm_stop();
 		checking = true;
 		topbar_set_library_check(TOPBAR_LIBRARY_CHECKING);
 		break;
@@ -484,6 +489,10 @@ static void update_note_cb(void *user) {
 	case LIBRARY_UPDATE_FINISHED:
 		checking = false;
 		topbar_set_library_check(TOPBAR_LIBRARY_CHECKED);
+		// New tracks may mean new albums; cache hits make a re-walk cheap.
+		if (note->added > 0) {
+			cover_warm_start();
+		}
 		break;
 
 	case LIBRARY_UPDATE_STOPPED:
@@ -515,6 +524,8 @@ static void update_note_cb(void *user) {
 		if (!library_detect_changes_chosen()) {
 			library_set_detect_changes(true);
 		}
+		// Post-scan: fill list thumbs one album at a time on an idle thread.
+		cover_warm_start();
 		break;
 	}
 	free(note);
