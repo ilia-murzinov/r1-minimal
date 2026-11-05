@@ -3,6 +3,7 @@
 ## Locked surface
 
 Home 2×2: NOW/PLAYING · BLUE/TOOTH · ARTISTS · GENRES. No Wi‑Fi / QP / clock.
+Empty library: tap Artists/Genres to scan; long-press either to rescan.
 USB MSC by default; 10× taps on the Bluetooth header band toggles ADB.
 
 ## Gone from the tree
