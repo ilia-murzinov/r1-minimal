@@ -9,7 +9,6 @@
 #include "src/gui/shell/confirm.h"
 #include "src/gui/shell/easteregg.h"
 #include "src/gui/fonts/fonts.h"
-#include "src/gui/settings/fwupdate.h"
 #include "src/gui/settings/settings.h"
 #include "src/gui/shell/settingsrow.h"
 #include "src/gui/shell/switcher.h"
@@ -26,43 +25,8 @@ lv_obj_t *systempage_screen;
 lv_obj_t *sysinfo_screen;
 
 // The headset controls are under Settings > More (see settings.c). System is
-// entered to update the firmware or wipe the device, twice a year, which has
+// entered to wipe the device, twice a year, which has
 // nothing to do with a switch touched when headphones change.
-
-// ---------------------------------------------------------------------------
-// Firmware update
-//
-//   battery below 30% and not charging -> refuse, and say why
-//   otherwise                          -> the update card (fwupdate.h): from
-//                                         the internet or from the card
-// ---------------------------------------------------------------------------
-
-#define FIRMWARE_MIN_BATTERY_PERCENT 30
-
-static void firmware_clicked_cb(lv_event_t *e) {
-	(void)e;
-
-	// Charge check first, like the stock player: an update that loses power
-	// halfway leaves the device in recovery with a half-written kernel, the one
-	// failure here that cannot be undone from the UI. An unreadable level must
-	// not block the update: the reader returns "!!" when it cannot find the
-	// gauge (the host build, and any firmware naming that sysfs node
-	// differently), and refusing to update over a battery nobody can measure
-	// would be the opposite of useful.
-	char *percent_text = read_battery_percent();
-	int percent = 100;
-	if (percent_text && percent_text[0] >= '0' && percent_text[0] <= '9') {
-		percent = atoi(percent_text);
-	}
-	bool charging = read_battery_charging();
-
-	if (percent < FIRMWARE_MIN_BATTERY_PERCENT && !charging) {
-		gui_notify_popup("system_battery_warning");
-		return;
-	}
-
-	fwupdate_show();
-}
 
 // ---------------------------------------------------------------------------
 // Factory reset
@@ -300,7 +264,6 @@ void systempage_init(gui_config_t *cfg) {
 
 	settingsrow_add(container, "system_about", NULL, switch_screen_cb, sysinfo_screen);
 	// Actions, not pages: settingsrow_action leaves off the chevron.
-	settingsrow_action(container, "system_update_firmware", firmware_clicked_cb, NULL);
 	settingsrow_action(container, "system_factory_reset", factory_clicked_cb, NULL);
 
 	switcher_attach_back_gesture(systempage_screen);

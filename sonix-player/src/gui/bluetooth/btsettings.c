@@ -21,6 +21,7 @@
 #include "src/gui/shell/topbar.h"
 #include "src/system/bluetooth/bluetooth.h"
 #include "src/system/core/lang.h"
+#include "src/system/device/adb.h"
 
 lv_obj_t *btsettings_screen;
 
@@ -790,9 +791,42 @@ static lv_obj_t *make_section(lv_obj_t *container, const char *title, lv_obj_t *
 	return box;
 }
 
+// Stock-style hidden ADB entry: 10 taps on the Bluetooth title.
+// ADB and the USB drive are exclusive (see usb.c).
+#define ADB_TITLE_TAPS 10
+#define ADB_TITLE_TAP_WINDOW_MS 4000
+
+static int adb_title_taps;
+static uint32_t adb_title_tap_since;
+
+static void adb_title_tapped_cb(lv_event_t *e) {
+	(void)e;
+
+	uint32_t now = lv_tick_get();
+	if (adb_title_taps == 0 || lv_tick_elaps(adb_title_tap_since) > ADB_TITLE_TAP_WINDOW_MS) {
+		adb_title_taps = 0;
+		adb_title_tap_since = now;
+	}
+	adb_title_taps++;
+
+	if (adb_title_taps < ADB_TITLE_TAPS) {
+		return;
+	}
+	adb_title_taps = 0;
+
+	bool on = !adb_switched_on();
+	adb_set_enabled(on);
+	// Enabling ADB yanks the Mac disk (no eject needed); disabling gives it back.
+	toast_plain(on ? "ADB on — disk dropped" : "ADB off — USB drive");
+}
+
 void btsettings_init(gui_config_t *cfg) {
 	lv_obj_t *container = settingsrow_page(btsettings_screen, cfg, "bluetooth");
-	settingsrow_title_corner_slots(settingsrow_page_title(btsettings_screen), cfg, 3);
+	lv_obj_t *title = settingsrow_page_title(btsettings_screen);
+	settingsrow_title_corner_slots(title, cfg, 3);
+
+	lv_obj_set_clickable(title, true);
+	lv_obj_add_event_cb(title, adb_title_tapped_cb, LV_EVENT_CLICKED, NULL);
 
 	settingsrow_toggle(container, "bluetooth", &bt_switch, switch_changed_cb);
 	if (bluetooth_get_enabled()) {

@@ -88,7 +88,7 @@
 #define CF_STEP_PX 96
 
 // The travel that separates a tap from a drag.
-#define CF_DRAG_COMMIT_PX 8
+#define CF_DRAG_COMMIT_PX 14
 
 // The throw: a release carries on at the speed the finger had, slowing to a
 // stop, and settles on whichever record it ended nearest.
@@ -99,7 +99,7 @@
 // The band at the bottom of the Musica page the opening pull has to start in,
 // and the travel that hands the sheet over to the finger.
 #define CF_EDGE_H 56
-#define CF_EDGE_COMMIT_PX 12
+#define CF_EDGE_COMMIT_PX 18
 
 // The grip at the top: how far down it sits and how big a target it is.
 #define CF_BAR_TOP 2
@@ -970,7 +970,9 @@ static void place_glow(void) {
 	lv_obj_set_pos(glow_obj, mid_x - gw / 2 - CF_GLOW_REACH, top - CF_GLOW_REACH);
 	// The colour is the image's recolour, which is what lets one alpha map serve
 	// every album.
-	lv_obj_set_style_image_recolor(glow_obj, lv_color_hex(glow_tone ? glow_tone : lv_color_to_u32(theme()->accent)),
+	// Minimal R1: glow follows theme accent (white), never the sleeve hue.
+	(void)glow_tone;
+	lv_obj_set_style_image_recolor(glow_obj, theme()->accent,
 								   0);
 	lv_obj_set_style_image_recolor_opa(glow_obj, LV_OPA_COVER, 0);
 	lv_obj_set_style_image_opa(glow_obj, (lv_opa_t)opa, 0);
@@ -1900,14 +1902,9 @@ static void edge_drag_cb(lv_event_t *e) {
 }
 
 void coverflow_attach_edge(lv_obj_t *grid, gui_config_t *cfg) {
-	if (!grid) {
-		return;
-	}
-	void *band = (void *)(uintptr_t)(cfg->screen_height - CF_EDGE_H);
-	lv_obj_add_event_cb(grid, edge_drag_cb, LV_EVENT_PRESSED, band);
-	lv_obj_add_event_cb(grid, edge_drag_cb, LV_EVENT_PRESSING, band);
-	lv_obj_add_event_cb(grid, edge_drag_cb, LV_EVENT_RELEASED, band);
-	lv_obj_add_event_cb(grid, edge_drag_cb, LV_EVENT_PRESS_LOST, band);
+	// Minimal R1: no upward edge gesture.
+	(void)grid;
+	(void)cfg;
 }
 
 // ---------------------------------------------------------------------------

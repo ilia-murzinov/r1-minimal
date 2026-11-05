@@ -2,35 +2,41 @@
 
 #include <stdint.h>
 
-#include "src/gui/library/audiobooks.h"
+#include "src/gui/bluetooth/btsettings.h"
+#include "src/gui/library/medialist.h"
+#include "src/gui/library/music.h"
+#include "src/gui/nowplaying/player.h"
+#include "src/gui/settings/settings.h"
 #include "src/gui/shell/gridpage.h"
 #include "src/gui/shell/gui.h"
-#include "src/gui/shell/icons.h"
-#include "src/gui/shell/morepage.h"
-#include "src/gui/library/music.h"
-#include "src/gui/settings/settings.h"
-#include "src/gui/streaming/streaming.h"
-#include "src/gui/wireless/wireless.h"
 #include "src/gui/shell/switcher.h"
+#include "src/system/core/lang.h"
+#include "src/system/library/library.h"
 
 #include "lvgl/lvgl.h"
 
 lv_obj_t *main_menu_screen;
 
+static void open_artists(void) {
+	medialist_open(tr("artists"), LIBRARY_LIST_ARTISTS, LIBRARY_FILTER_NONE, NULL);
+}
+
+static void open_genres(void) {
+	medialist_open(tr("music_genres"), LIBRARY_LIST_GENRES, LIBRARY_FILTER_NONE, NULL);
+}
+
+static void open_now_playing(void) { player_sheet_open(false); /* no slide animation */ }
+
 void main_menu_init(gui_config_t *cfg) {
-	// Music and Audiobooks both open with the card out or at a computer, and
-	// say so on their own page.
+	/* Flat home 2×2, text-only uppercase literals (no tr keys).
+	 * BLUETOOTH is two lines so it fits a half-width tile at the same size
+	 * as NOW PLAYING (one long word overflows; a space would look truncated). */
 	const grid_entry_t entries[] = {
-		{"music", &icon_menu_music, &music_screen},
-		{"streaming", &icon_menu_streaming, &streaming_screen},
-		{"wireless", &icon_menu_wireless, &wireless_screen},
-		{"audiobooks", &icon_menu_audiobooks, &audiobooks_screen},
-		// The door to the More page, which holds the DAC and anything else
-		// that does not fit. The main menu has exactly six tiles, and one of
-		// them has to be able to keep growing.
-		{"more", &icon_menu_more, &morepage_screen},
-		{"settings", &icon_menu_settings, &settings_screen},
+		{"NOW\nPLAYING", NULL, NULL, open_now_playing},
+		{"BLUE\nTOOTH", NULL, &btsettings_screen, NULL},
+		{"ARTISTS", NULL, NULL, open_artists},
+		{"GENRES", NULL, NULL, open_genres},
 	};
 
-	gridpage_build(main_menu_screen, cfg, entries, (int)(sizeof(entries) / sizeof(entries[0])), 2, 3, false);
+	gridpage_build(main_menu_screen, cfg, entries, (int)(sizeof(entries) / sizeof(entries[0])), 2, 2, false);
 }

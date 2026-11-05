@@ -125,19 +125,20 @@ static void order_load(void) {
 		return;
 	}
 	order_loaded = true;
-	in_use_n = 0;
+	/* Minimal R1 surface: Artists / Albums / Genres only. Ignore saved tile
+	 * order so Settings › Rearrange cannot bring Browse/EQ-adjacent tiles back. */
+	in_use[0] = MUSIC_TILE_ARTISTS;
+	in_use[1] = MUSIC_TILE_ALBUMS;
+	in_use[2] = MUSIC_TILE_GENRES;
+	in_use_n = 3;
 	hidden_n = 0;
-	in_use_n = parse_list(config_get("music", "tiles", ""), in_use);
-	hidden_n = parse_list(config_get("music", "tiles_hidden", ""), hidden);
-	// Whatever neither list names is in use, at the end, in the usual order.
 	for (int i = 0; i < MUSIC_TILE_COUNT; i++) {
-		if (!listed(in_use, in_use_n, (music_tile_t)i) && !listed(hidden, hidden_n, (music_tile_t)i)) {
-			in_use[in_use_n++] = (music_tile_t)i;
+		if (i == MUSIC_TILE_ARTISTS || i == MUSIC_TILE_ALBUMS || i == MUSIC_TILE_GENRES) {
+			continue;
 		}
+		hidden[hidden_n++] = (music_tile_t)i;
 	}
-	if (in_use_n == 0 && hidden_n > 0) {
-		in_use[in_use_n++] = hidden[--hidden_n]; // never an empty page
-	}
+	(void)parse_list;
 }
 
 static void save_list(const char *key, const music_tile_t *list, int n) {
@@ -204,31 +205,15 @@ music_tile_t music_tiles_hidden_at(int position) {
 }
 
 void music_tiles_move_in_use(music_tile_t tile, int position) {
-	order_load();
-	if (tile < 0 || tile >= MUSIC_TILE_COUNT) {
-		return;
-	}
-	list_remove(in_use, &in_use_n, tile);
-	list_remove(hidden, &hidden_n, tile);
-	list_insert(in_use, &in_use_n, tile, position);
-	order_changed();
+	(void)tile;
+	(void)position;
+	/* Locked minimal set — rearrange is a no-op. */
 }
 
 bool music_tiles_move_hidden(music_tile_t tile, int position) {
-	order_load();
-	if (tile < 0 || tile >= MUSIC_TILE_COUNT) {
-		return false;
-	}
-	// The last tile in use stays: a Music page with nothing on it has no way
-	// into the library at all.
-	if (listed(in_use, in_use_n, tile) && in_use_n <= 1) {
-		return false;
-	}
-	list_remove(in_use, &in_use_n, tile);
-	list_remove(hidden, &hidden_n, tile);
-	list_insert(hidden, &hidden_n, tile, position);
-	order_changed();
-	return true;
+	(void)tile;
+	(void)position;
+	return false;
 }
 
 const char *music_tile_tag(music_tile_t tile) {

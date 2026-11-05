@@ -1,6 +1,9 @@
 #include "gridpage.h"
 
+#include <ctype.h>
+#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "lvgl/lvgl.h"
 
@@ -18,7 +21,8 @@
 #define TILE_RADIUS 12 // Adwaita card radius
 
 static void unavailable_cb(lv_event_t *e) {
-	if (player_sheet_drag_active() || switcher_back_drag_active() || coverflow_drag_active()) {
+	if (player_sheet_drag_active() || player_sheet_edge_up_active() || switcher_back_drag_active() ||
+		coverflow_drag_active()) {
 		return; // this was a swipe across the tile, not a tap on it
 	}
 
@@ -32,7 +36,8 @@ static void unavailable_cb(lv_event_t *e) {
 }
 
 static void action_cb(lv_event_t *e) {
-	if (player_sheet_drag_active() || switcher_back_drag_active() || coverflow_drag_active()) {
+	if (player_sheet_drag_active() || player_sheet_edge_up_active() || switcher_back_drag_active() ||
+		coverflow_drag_active()) {
 		return; // a swipe, not a tap
 	}
 
@@ -52,6 +57,14 @@ void gridpage_set_tile(lv_obj_t *grid, int index, const lv_image_dsc_t *icon, co
 	if (!tile) {
 		return;
 	}
+	// Text-only tiles: one child. Icon+label tiles: two children.
+	uint32_t n = lv_obj_get_child_count(tile);
+	if (n < 2) {
+		if (label && n >= 1) {
+			lv_label_set_text(lv_obj_get_child(tile, 0), tr(label));
+		}
+		return;
+	}
 	if (icon) {
 		lv_image_set_src(lv_obj_get_child(tile, TILE_ICON_CHILD), icon);
 	}
@@ -61,6 +74,20 @@ void gridpage_set_tile(lv_obj_t *grid, int index, const lv_image_dsc_t *icon, co
 }
 
 static void add_tile(lv_obj_t *grid, const grid_entry_t *entry, int width, int height) {
+	// Blank spacer: same footprint as a tile, no chrome, no tap. Used to keep
+	// an even grid when home has an odd number of real entries.
+	if (!entry->label && !entry->icon && !entry->target && !entry->action) {
+		lv_obj_t *blank = lv_obj_create(grid);
+		lv_obj_set_size(blank, width, height);
+		lv_obj_set_style_bg_opa(blank, LV_OPA_TRANSP, 0);
+		lv_obj_set_style_border_width(blank, 0, 0);
+		lv_obj_set_style_pad_all(blank, 0, 0);
+		lv_obj_set_clickable(blank, false);
+		lv_obj_set_scrollable(blank, false);
+		lv_obj_set_event_bubble(blank, true);
+		return;
+	}
+
 	lv_obj_t *tile = lv_btn_create(grid);
 	lv_obj_set_size(tile, width, height);
 	lv_obj_add_style(tile, &theme_style_card, 0);
@@ -78,20 +105,24 @@ static void add_tile(lv_obj_t *grid, const grid_entry_t *entry, int width, int h
 	lv_obj_set_style_pad_gap(tile, 8, 0);
 	lv_obj_set_scrollable(tile, false);
 
-	// The tile artwork keeps its own colours, so unlike the interface glyphs it
-	// is not run through the theme's recolour.
-	lv_obj_t *icon = lv_image_create(tile);
-	lv_image_set_src(icon, entry->icon);
+	lv_obj_t *icon = NULL;
+	if (entry->icon) {
+		icon = lv_image_create(tile);
+		lv_image_set_src(icon, entry->icon);
+		lv_obj_add_style(icon, &theme_style_icon, 0);
+	}
 
-	// The caption wraps rather than running out of the tile: a translated label
-	// such as "Album-Interpreten" does not fit on one line. Centred, because a
-	// tile is read as a block under its picture.
+	// Caption: translated when there is an icon (stock pages); literal when
+	// text-only (home uses ready-made uppercase strings, maybe with \\n).
 	lv_obj_t *label = lv_label_create(tile);
-	lv_label_set_text(label, tr(entry->label));
+	lv_label_set_text(label, entry->icon ? tr(entry->label) : entry->label);
 	lv_obj_add_style(label, &theme_style_text, 0);
-	lv_obj_set_style_text_font(label, &font_ui_24_bold, 0);
+	lv_obj_set_style_text_font(label, entry->icon ? &font_ui_24_bold : &font_ui_36_bold, 0);
 	lv_obj_set_width(label, lv_pct(100));
 	lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
+	if (!entry->icon) {
+		lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
+	}
 
 	if (entry->target) {
 		lv_obj_add_event_cb(tile, switch_screen_cb, LV_EVENT_CLICKED, *entry->target);
@@ -99,7 +130,9 @@ static void add_tile(lv_obj_t *grid, const grid_entry_t *entry, int width, int h
 		lv_obj_add_event_cb(tile, action_cb, LV_EVENT_CLICKED, (void *)entry->action);
 	} else {
 		lv_obj_add_event_cb(tile, unavailable_cb, LV_EVENT_CLICKED, (void *)entry->label);
-		lv_obj_set_style_opa(icon, LV_OPA_40, 0);
+		if (icon) {
+			lv_obj_set_style_opa(icon, LV_OPA_40, 0);
+		}
 		lv_obj_add_style(label, &theme_style_text_dim, 0);
 	}
 }

@@ -12,8 +12,6 @@
 #include "src/gui/library/medialist.h"
 #include "src/gui/nowplaying/player.h"
 #include "src/gui/library/playlistpage.h"
-#include "src/gui/streaming/qobuzpage.h"
-#include "src/gui/streaming/tidalpage.h"
 #include "src/gui/shell/popover.h"
 #include "src/gui/settings/musicsettings.h"
 #include "src/gui/shell/settingsrow.h"
@@ -27,16 +25,13 @@
 #include "src/system/library/metadata.h"
 #include "src/system/playback/device_state.h"
 #include "src/system/core/lang.h"
-#include "src/gui/streaming/podcastcard.h"
-#include "src/gui/streaming/podcastpage.h"
-#include "src/system/streaming/podcastcache.h"
-#include "src/system/streaming/qobuzcache.h"
-#include "src/system/streaming/tidalcache.h"
 #include "src/system/library/library.h"
 #include "src/system/playback/playlist.h"
 #include "src/system/core/utils.h"
 #include "src/system/device/system.h"
 #include "lvgl/src/core/lv_obj_scroll_private.h"
+#include "src/gui/nowplaying/removed_features.h"
+
 
 lv_obj_t *queue_screen;
 lv_obj_t *details_screen;

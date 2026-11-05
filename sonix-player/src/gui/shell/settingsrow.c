@@ -463,6 +463,7 @@ lv_obj_t *settingsrow_switch(lv_obj_t *parent, lv_event_cb_t cb) {
 	// white after a switch to the dark theme.
 	lv_obj_add_style(sw, &theme_style_switch, LV_PART_MAIN);
 	lv_obj_add_style(sw, &theme_style_switch_checked, LV_PART_INDICATOR | LV_STATE_CHECKED);
+	lv_obj_add_style(sw, &theme_style_switch_knob, LV_PART_KNOB);
 	lv_obj_add_event_cb(sw, switch_tap_cb, LV_EVENT_CLICKED, sw);
 	if (cb) {
 		lv_obj_add_event_cb(sw, cb, LV_EVENT_VALUE_CHANGED, NULL);

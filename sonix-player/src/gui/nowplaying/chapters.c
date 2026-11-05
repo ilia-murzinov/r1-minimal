@@ -12,9 +12,10 @@
 #include "src/gui/shell/settingsrow.h"
 #include "src/gui/shell/switcher.h"
 #include "src/gui/shell/theme.h"
-#include "src/system/playback/audiobook.h"
 #include "src/system/playback/device_state.h"
 #include "src/system/core/lang.h"
+#include "src/gui/nowplaying/removed_features.h"
+
 
 lv_obj_t *chapters_screen;
 

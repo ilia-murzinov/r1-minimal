@@ -10,10 +10,7 @@
 
 #include "src/gui/library/browser.h"
 #include "src/gui/nowplaying/coverflow.h"
-#include "src/gui/settings/ccsettings.h"
 #include "src/gui/nowplaying/chapters.h"
-#include "src/gui/nowplaying/lyricsearch.h"
-#include "src/gui/wireless/airplay.h"
 #include "src/gui/bluetooth/airpodspage.h"
 #include "src/gui/settings/appearance.h"
 #include "src/gui/bluetooth/btaudio.h"
@@ -23,35 +20,18 @@
 #include "src/gui/settings/bootlogopage.h"
 #include "src/gui/settings/kblayoutpage.h"
 #include "src/gui/settings/screensaver.h"
-#include "src/gui/library/audiobookextras.h"
-#include "src/gui/library/audiobooks.h"
 #include "src/gui/settings/devoptions.h"
-#include "src/gui/ebook/ebookmarkspage.h"
-#include "src/gui/ebook/ebookpage.h"
-#include "src/gui/ebook/ebookreader.h"
-#include "src/gui/ebook/ebooksettings.h"
 #include "src/gui/settings/processespage.h"
 #include "src/gui/settings/language.h"
 #include "src/gui/library/libraryscan.h"
-#include "src/gui/wireless/dlna.h"
-#include "src/gui/wireless/sonixlink.h"
-#include "src/gui/gearboy/gearboypage.h"
-#include "src/gui/gearboy/gearboysettings.h"
-#include "src/gui/flappybird/flappybird.h"
-#include "src/gui/gearboy/gearboyplay.h"
 #include "src/gui/shell/lowbattery.h"
 #include "src/gui/shell/main_menu.h"
 #include "src/gui/library/medialist.h"
-#include "src/gui/library/filespage.h"
-#include "src/gui/library/imageview.h"
-#include "src/gui/library/textview.h"
-#include "src/gui/shell/morepage.h"
 #include "src/gui/shell/popover.h"
 #include "src/gui/nowplaying/trackmenu.h"
 #include "src/gui/library/music.h"
 #include "src/gui/audio/eqsettings.h"
 #include "src/gui/audio/peqsettings.h"
-#include "src/gui/audio/peqautoeq.h"
 #include "src/gui/settings/remap.h"
 #include "src/gui/audio/msebsettings.h"
 #include "src/gui/settings/musicsettings.h"
@@ -59,21 +39,13 @@
 #include "src/gui/library/playlistpage.h"
 #include "src/gui/settings/powersettings.h"
 #include "src/gui/shell/powermenu.h"
-#include "src/gui/shell/quickpanel.h"
 #include "src/gui/bluetooth/btreceiverpage.h"
-#include "src/gui/audio/dacpage.h"
-#include "src/gui/audio/metronomepage.h"
 #include "src/system/bluetooth/btreceiver.h"
 #include "src/system/audio/usbdac.h"
-#include "src/system/net/wifitransfer.h"
-#include "src/system/streaming/radio.h"
-#include "src/gui/streaming/radiopage.h"
 #include "src/gui/library/search.h"
 #include "src/gui/settings/settings.h"
 #include "src/gui/settings/systempage.h"
-#include "src/gui/shell/setupwifi.h"
 #include "src/gui/shell/welcome.h"
-#include "src/gui/streaming/streaming.h"
 #include "src/gui/shell/switcher.h"
 #include "src/gui/settings/timeset.h"
 #include "src/gui/fonts/fonts.h"
@@ -82,9 +54,6 @@
 #include "src/gui/shell/toast.h"
 #include "src/gui/shell/topbar.h"
 #include "src/gui/shell/volume_overlay.h"
-#include "src/gui/wireless/wifisettings.h"
-#include "src/gui/wireless/wifitransfer.h"
-#include "src/gui/wireless/wireless.h"
 #include "src/system/bluetooth/bluetooth.h"
 #include "src/system/device/system.h"
 #include "src/system/device/usb.h"
@@ -508,11 +477,7 @@ static void key_async_cb(void *user_data) {
 	// that transport is not what the device is doing. Pressing them then does
 	// not do nothing -- it starts a local track underneath whatever is actually
 	// going on, which is worse than nothing.
-	if (usbdac_is_active() || wifitransfer_running()) {
-		return;
-	}
-	// The same while the metronome holds the output.
-	if (metronomepage_key(key)) {
+	if (usbdac_is_active()) {
 		return;
 	}
 
@@ -605,37 +570,13 @@ void gui_init(gui_config_t *cfg) {
 	medialist_screen = lv_obj_create(NULL);
 	medialist_tracks_screen = lv_obj_create(NULL);
 	medialist_albums_screen = lv_obj_create(NULL);
-	audiobooks_screen = lv_obj_create(NULL);
-	audiobooksettings_screen = lv_obj_create(NULL);
-	audiobookcontrols_screen = lv_obj_create(NULL);
-	audiobookscan_screen = lv_obj_create(NULL);
 	chapters_screen = lv_obj_create(NULL);
-	lyricsearch_screen = lv_obj_create(NULL);
 	queue_screen = lv_obj_create(NULL);
 	details_screen = lv_obj_create(NULL);
-	wireless_screen = lv_obj_create(NULL);
-	streaming_screen = lv_obj_create(NULL);
-	radiopage_screen = lv_obj_create(NULL);
-	dacpage_screen = lv_obj_create(NULL);
-	radiolist_screen = lv_obj_create(NULL);
-	radiosearch_screen = lv_obj_create(NULL);
-	wifisettings_screen = lv_obj_create(NULL);
 	btsettings_screen = lv_obj_create(NULL);
 	btaudio_screen = lv_obj_create(NULL);
 	btreceiverpage_screen = lv_obj_create(NULL);
 	airpodspage_screen = lv_obj_create(NULL);
-	wifitransfer_screen = lv_obj_create(NULL);
-	airplay_screen = lv_obj_create(NULL);
-	dlna_screen = lv_obj_create(NULL);
-	sonixlink_screen = lv_obj_create(NULL);
-	morepage_screen = lv_obj_create(NULL);
-	filespage_screen = lv_obj_create(NULL);
-	textview_screen = lv_obj_create(NULL);
-	imageview_screen = lv_obj_create(NULL);
-	gearboypage_screen = lv_obj_create(NULL);
-	gearboyplay_screen = lv_obj_create(NULL);
-	flappybird_screen = lv_obj_create(NULL);
-	metronomepage_screen = lv_obj_create(NULL);
 
 	// Persistent topbar that stays above every screen.
 	topbar_init(cfg);
@@ -658,43 +599,10 @@ void gui_init(gui_config_t *cfg) {
 	music_init(cfg);
 	coverflow_init(cfg);
 
-	// wireless section: the two radio pages first, so the section's tiles
-	// have somewhere to point and the control centre's round buttons have a
-	// page to open on a long press.
-	wifisettings_init(cfg);
-	wifitransfer_page_init(cfg); // after wifisettings: its "no Wi-Fi" row points there
-	airplay_page_init(cfg);		 // likewise
-	dlna_page_init(cfg);		 // likewise: its "no Wi-Fi" row points there too
-	sonixlink_page_init(cfg);	 // likewise
 	airpodspage_init(cfg);		 // before btaudio: its AirPods row points at this page
 	btaudio_init(cfg);			 // before btsettings: its gear points at this page
 	btreceiverpage_init(cfg);	 // likewise, for the button beside the gear
 	btsettings_init(cfg);
-	wireless_init(cfg);
-
-	// streaming section: three services that are not implemented yet, so the
-	// page exists and is walkable but its tiles say so when tapped.
-	// radio before the section, so its tile has somewhere to point.
-	radiopage_init(cfg);
-	dacpage_init(cfg);
-	// After dacpage: the More section points at its pages.
-	gearboyplay_init(cfg);  // before the list: one of its rows leads here
-	gearboysettings_init(cfg); // before the page: its gear opens this
-	gearboypage_init(cfg);
-	flappybird_init(cfg);
-	metronomepage_init(cfg);
-	// before morepage: the books tile opens the shelf, and the shelf opens the
-	// reader.
-	ebookreader_init(cfg);
-	// before ebookpage: its corner button opens the bookmarks
-	ebookmarkspage_init(cfg);
-	ebooksettings_init(cfg); // likewise: the other corner button opens this
-	ebookpage_init(cfg);
-	morepage_init(cfg);
-	textview_init(cfg);	 // before filespage: a text file tapped there opens here
-	imageview_init(cfg); // likewise, for a picture
-	filespage_init(cfg);
-	streaming_init(cfg);
 
 	player_init(cfg);
 
@@ -704,7 +612,6 @@ void gui_init(gui_config_t *cfg) {
 	// its screen, which has to exist already. The control centre's order page
 	// is reached from the same page and has to exist for the same reason.
 	remap_init(cfg);
-	ccsettings_init(cfg);
 	kblayoutpage_init(cfg); // the keyboard-language row on the same page
 	settings_init(cfg);
 	devoptions_init(cfg);
@@ -718,57 +625,35 @@ void gui_init(gui_config_t *cfg) {
 	msebsettings_init(cfg); // before musicsettings: the MSEB page hangs its gear off it
 	eqsettings_init(cfg);	// and the equalizer page hangs its own off this
 	peqsettings_init(cfg); // the parametric page hangs its preset screen off the gear
-	peqautoeq_init(cfg);  // the waveform entry on that page searches AutoEq profiles
 	musicsettings_init(cfg);
 	search_init(cfg);
 	medialist_init(cfg);
 	playlistpage_init(cfg);
-	audiobookextras_init(cfg); // the bookmarks and summary pages
-	audiobooks_init(cfg);
 	chapters_init(cfg);
-	lyricsearch_init(cfg);
 	trackmenu_init(cfg);
 
-	// The leftward swipe that pulls the player in works on the browsing pages
-	// -- menu, library lists, file browser -- but NOT on the settings pages
-	// nor on the queue: there a stray horizontal drag would yank the player
-	// over what is being adjusted or read.
+	// The leftward swipe that pulls the player in: browsing pages only.
 	lv_obj_t *const player_swipe_screens[] = {
 		main_menu_screen,		 music_screen,		browser_screen,		medialist_screen,
-		// details_screen is deliberately absent: its page is reached FROM the
-		// player, so dragging it sideways to go back into the player would be
-		// one gesture doing two contradictory things. The back swipe is the
-		// only way out of it.
-		medialist_tracks_screen, medialist_albums_screen, audiobooks_screen, wireless_screen,
-		streaming_screen,		 radiopage_screen,	radiolist_screen,	radiosearch_screen,
-		morepage_screen,
+		medialist_tracks_screen, medialist_albums_screen,
 	};
 	for (size_t i = 0; i < sizeof(player_swipe_screens) / sizeof(player_swipe_screens[0]); i++) {
 		player_sheet_attach_drag(player_swipe_screens[i], true);
 	}
 
-	// The rightward swipe-back works everywhere a page can go back from,
-	// settings and queue included. The scan pages stay out -- their only
-	// exits are their own buttons -- and the handler itself skips the main
-	// menu.
+	// The rightward swipe-back works everywhere a page can go back from.
 	lv_obj_t *const back_swipe_screens[] = {
-		main_menu_screen, music_screen,			browser_screen,	  settings_screen,
+		main_menu_screen, music_screen, browser_screen, settings_screen,
 		devoptions_screen, processespage_screen, musicsettings_screen, powersettings_screen, appearance_screen,
 		language_screen,
-		medialist_screen,  medialist_tracks_screen, medialist_albums_screen, audiobooks_screen, audiobooksettings_screen,
-		queue_screen,	  chapters_screen,		 details_screen,   audiobookcontrols_screen,
-		lyricsearch_screen,
-		wireless_screen,
-		wifisettings_screen,
-		btsettings_screen, btaudio_screen,	 airpodspage_screen, airplay_screen,   streaming_screen,
-		radiopage_screen,  radiolist_screen, radiosearch_screen,
-		dlna_screen,	   sonixlink_screen,	 morepage_screen,	  gearboypage_screen, metronomepage_screen,
+		medialist_screen, medialist_tracks_screen, medialist_albums_screen,
+		queue_screen, chapters_screen, details_screen,
+		btsettings_screen, btaudio_screen, airpodspage_screen,
 	};
 	for (size_t i = 0; i < sizeof(back_swipe_screens) / sizeof(back_swipe_screens[0]); i++) {
 		switcher_attach_back_gesture(back_swipe_screens[i]);
 	}
 
-	quickpanel_init(cfg); // above the pages, under the popover/power menu
 	popover_init(); // last: its veil must sit above the other top-layer chrome
 	powersettings_init(cfg);
 	confirm_init(cfg);
@@ -857,7 +742,6 @@ void gui_init(gui_config_t *cfg) {
 	// language brings the clock up itself, so the two only chain here on the
 	// path where the language has already been answered before.
 	welcome_init(cfg);
-	setupwifi_init(cfg); // the step between the language and the clock
 
 	// Ahead of everything else, and only on a device that has never been booted:
 	// the greeting. Its button opens the language picker itself, which in turn

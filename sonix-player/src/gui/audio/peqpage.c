@@ -8,7 +8,6 @@
 #include "src/gui/fonts/fonts.h"
 #include "src/gui/shell/icons.h"
 #include "src/gui/audio/peqsettings.h"
-#include "src/gui/audio/peqautoeq.h"
 #include "src/gui/shell/settingsrow.h"
 #include "src/gui/shell/switcher.h"
 #include "src/gui/shell/theme.h"
@@ -799,8 +798,6 @@ static void build_band_page(gui_config_t *cfg) {
 
 static lv_obj_t *enable_switch;
 static lv_obj_t *reset_btn;
-static lv_obj_t *autoeq_btn;
-static lv_timer_t *autoeq_timer;
 static lv_obj_t *preamp_slider, *preamp_value;
 static lv_obj_t *headroom_label;
 static lv_obj_t *band_rows[PEQ_BANDS];
@@ -968,31 +965,6 @@ static void open_settings_cb(lv_event_t *e) {
 	switch_screen(peqsettings_screen());
 }
 
-static void open_autoeq_cb(lv_event_t *e) {
-	(void)e;
-	if (peqautoeq_network_needed()) {
-		return;
-	}
-	peqautoeq_open();
-}
-
-// The AutoEq button at half strength without a network; a tap on it then only
-// says why.
-static void autoeq_btn_refresh(void) {
-	if (autoeq_btn) {
-		lv_obj_set_style_opa(autoeq_btn, peqautoeq_network_ready() ? LV_OPA_COVER : LV_OPA_40, 0);
-	}
-}
-
-// Wi-Fi can come and go while the page is open.
-static void autoeq_timer_cb(lv_timer_t *timer) {
-	if (lv_screen_active() != main_screen) {
-		lv_timer_pause(timer);
-		return;
-	}
-	autoeq_btn_refresh();
-}
-
 static void screen_loaded_cb(lv_event_t *e) {
 	(void)e;
 
@@ -1012,10 +984,6 @@ static void screen_loaded_cb(lv_event_t *e) {
 	refresh_preamp();
 	graph_refresh();
 
-	autoeq_btn_refresh();
-	if (autoeq_timer) {
-		lv_timer_resume(autoeq_timer);
-	}
 }
 
 // Called after a preset is loaded: the band rows, the preamp, the graph and,
@@ -1046,16 +1014,12 @@ void peqpage_init(gui_config_t *cfg) {
 	main_screen = lv_obj_create(NULL);
 	lv_obj_t *container = settingsrow_page(main_screen, cfg, "peq");
 
-	// Reset, AutoEq search and the preset gear share the title's corner slots.
-	settingsrow_title_corner_slots(settingsrow_page_title(main_screen), cfg, 3);
+	// Reset and the preset gear share the title's corner slots.
+	settingsrow_title_corner_slots(settingsrow_page_title(main_screen), cfg, 2);
 	reset_btn = corner_button(main_screen, cfg, 0, &icon_reset, reset_cb);
 	corner_button(main_screen, cfg, 1, &icon_music_settings, open_settings_cb);
-	autoeq_btn = corner_button(main_screen, cfg, 2, &icon_audio_waveform, open_autoeq_cb);
-	autoeq_timer = lv_timer_create(autoeq_timer_cb, 1000, NULL);
-	lv_timer_pause(autoeq_timer);
 
 	peqsettings_set_reload_cb(reload_after_preset);
-	peqautoeq_set_reload_cb(reload_after_preset);
 
 	settingsrow_toggle(container, "on", &enable_switch, enable_cb);
 	if (peq_get_enabled()) {

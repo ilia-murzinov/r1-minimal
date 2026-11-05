@@ -5,15 +5,10 @@
 
 #include "src/system/audio/audio.h"
 #include "src/system/core/config.h"
-#include "src/system/library/audiobookdb.h"
 #include "src/system/device/clock.h"
 #include "src/system/library/library.h"
 #include "src/system/core/logging.h"
 #include "src/system/bluetooth/btlog.h"
-#include "src/system/streaming/qobuzcache.h"
-#include "src/system/streaming/podcastcache.h"
-#include "src/system/streaming/tidalcache.h"
-#include "src/system/remote/dlna.h"
 #include "src/system/device/sysserver.h"
 #include "src/system/device/system.h"
 
@@ -166,17 +161,12 @@ void factoryreset_run(void) {
 	// unmount fail.
 	audio_stop();
 	library_close();
-	audiobookdb_close();
 	logging_suspend_for_usb();
 	btlog_card_release();
 
 	// Streaming caches (tracks and covers) go before the card is unmounted:
 	// after unmount_card() those files are unreachable, and a factory reset
 	// must not leave streamed tracks behind.
-	qobuzcache_clear_on_exit();
-	tidalcache_clear_on_exit();
-	podcastcache_clear_on_exit();
-	dlna_clear_on_exit();
 
 	// Push the time into the RTC as on every other exit path, otherwise the
 	// reboot comes back with whatever the RTC remembered.

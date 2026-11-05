@@ -9,7 +9,6 @@
 #include "src/gui/shell/animpark.h"
 #include "src/gui/shell/gui.h"
 #include "src/gui/shell/icons.h"
-#include "src/gui/library/audiobooks.h"
 #include "src/gui/library/libraryscan.h"
 #include "src/gui/shell/main_menu.h"
 #include "src/gui/library/music.h"
@@ -143,7 +142,7 @@ static bool back_goes_to_player(void) {
 // the width on release it completes; short of that it snaps back.
 // ---------------------------------------------------------------------------
 
-#define BACK_DRAG_COMMIT_PX 10	// sideways movement that starts the drag
+#define BACK_DRAG_COMMIT_PX 16	// sideways movement that starts the drag
 #define BACK_COMMIT_FRACTION 3	// release beyond width/3 goes back
 #define BACK_ANIM_MS 140
 
@@ -342,7 +341,7 @@ static void back_drag_cb(lv_event_t *e) {
 			return; // the sheet has its own horizontal gestures
 		}
 		lv_obj_t *screen = lv_screen_active();
-		if (screen == main_menu_screen || screen == libraryscan_screen || screen == audiobookscan_screen) {
+		if (screen == main_menu_screen || screen == libraryscan_screen) {
 			return; // nowhere to go back to / scans exit through their buttons
 		}
 		lv_indev_get_point(indev, &back_drag_start);
@@ -451,7 +450,7 @@ void switch_screen(lv_obj_t *target_screen) {
 			lv_obj_t *previous = history_pop();
 			load_screen(previous ? previous : main_menu_screen);
 		}
-		player_sheet_open(true);
+		player_sheet_open(false);
 		return;
 	}
 
@@ -486,7 +485,7 @@ static lv_obj_t *chevron_hidden_on;
 // back to, the scan pages exit through their own buttons, and a page showing
 // a dialog with a close button already has its way out.
 static bool page_has_no_chevron(lv_obj_t *screen) {
-	return screen == main_menu_screen || screen == libraryscan_screen || screen == audiobookscan_screen ||
+	return screen == main_menu_screen || screen == libraryscan_screen ||
 		   (screen && screen == chevron_hidden_on);
 }
 
@@ -624,7 +623,7 @@ void back_btn_cb(lv_event_t *e) {
 	// The player sits on top of everything else, so it is what the chevron
 	// dismisses first.
 	if (player_sheet_is_open()) {
-		player_sheet_close(true);
+		player_sheet_close(false);
 		return;
 	}
 

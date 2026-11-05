@@ -360,7 +360,23 @@ bool adb_set_enabled(bool enabled) {
 }
 
 void adb_apply_saved_state(void) {
+	// Minimal R1: USB mass storage by default (ADB exclusive with the drive).
+	// Earlier always-on builds forced system.adb=true into the config — clear
+	// that once so the card reader wins until the BT-title 10-tap enables ADB.
+	if (!config_get_bool("system", "adb_min_v2", false)) {
+		config_set_bool("system", "adb", false);
+		config_set_bool("system", "adb_min_v2", true);
+		config_save();
+	}
+
 	if (!config_get_bool("system", "adb", false)) {
+		wanted = false;
+		// Previous always-on left adbd up across a player restart; reclaim the
+		// controller so mass storage can export.
+		if (adb_is_running()) {
+			printf("adb: off by default; stopping leftover adbd for USB drive\n");
+			adb_apply(false);
+		}
 		return;
 	}
 	wanted = true;

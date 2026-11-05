@@ -18,9 +18,7 @@ LVGL_DIR = $(CURDIR)/lvgl
 ROCKBOX_TOOLCHAIN_DIR = $(CURDIR)/rockbox-toolchain
 
 CC = gcc
-CXX = g++
 CROSS_CC ?= $(ROCKBOX_TOOLCHAIN_DIR)/bin/mipsel-rockbox-linux-gnu-gcc
-CROSS_CXX ?= $(ROCKBOX_TOOLCHAIN_DIR)/bin/mipsel-rockbox-linux-gnu-g++
 
 # The interface uses the per-flag object API (lv_obj_set_hidden() and the
 # rest) and lv_text_ap_strlen(), neither of which exists before 9.6. It also
@@ -57,7 +55,7 @@ endif
 #                               readdir()/stat() fail with EOVERFLOW on an inode
 #                               or offset wider than 32 bits, which an exFAT
 #                               card produces routinely.
-CFLAGS = -O3 -g -Wall -MMD -MP -D_FILE_OFFSET_BITS=64 -I. -I$(LVGL_DIR) -DLV_CONF_INCLUDE_SIMPLE=1 -DGB_CORE=1
+CFLAGS = -O3 -g -Wall -MMD -MP -D_FILE_OFFSET_BITS=64 -I. -I$(LVGL_DIR) -DLV_CONF_INCLUDE_SIMPLE=1
 # On the host the audio libraries are the system ones (libopusfile-dev,
 # libwavpack-dev); on the target they are the ones this Makefile builds below.
 # opusfile.h includes <opus_multistream.h> unprefixed, so the opus/ directory
@@ -116,46 +114,19 @@ TARGET_CFLAGS = $(CFLAGS) -march=mips32r2 -mno-madd4 -mplt -ffunction-sections -
 # objects matching TARGET_HOT_PATTERNS.
 TARGET_DEFAULT_OPT = -O2
 TARGET_HOT_OPT = -O3
-TARGET_HOT_PATTERNS = build_target/system/audio/% build_target/system/decode/% build_target/gb/% \
+TARGET_HOT_PATTERNS = build_target/system/audio/% build_target/system/decode/% \
 					  build_target/lvgl/src/draw/sw/% build_target/lvgl/src/misc/lv_color%
 TARGET_OPT = $(TARGET_DEFAULT_OPT)
 $(TARGET_HOT_PATTERNS): TARGET_OPT = $(TARGET_HOT_OPT)
 
-# The C++ in this project is the Game Boy core (src/gb, Gearboy) plus the facade
-# that makes it callable from the player, which is C.
-#
-#   -DGEARBOY_DISABLE_DISASSEMBLER  drops the disassembler and the breakpoints:
-#       they are for Gearboy's own debugger, which is not here.
-#   -fno-exceptions -fno-rtti       the core uses neither, and without them a
-#       few tables and some dead code go away.
-#   The -I are needed because Gearboy's sources include each other by short name
-#       ("Video.h"), as if they were in their own directory -- which is how they
-#       sit upstream, and they are not touched so that the next update does not
-#       have to be merged by hand.
-#   -Wno-attributes                 Gearboy declares InvalidOPCode() noinline
-#       first and inline afterwards. Upstream code, left alone on purpose (see
-#       src/gb/README.md).
-GB_CFLAGS = -DGEARBOY_DISABLE_DISASSEMBLER -fno-exceptions -fno-rtti -Wno-attributes \
-			-Isrc/gb/core -Isrc/gb/miniz
-HOST_CXXFLAGS = $(HOST_CFLAGS) $(GB_CFLAGS)
-TARGET_CXXFLAGS = $(TARGET_CFLAGS) $(GB_CFLAGS)
-
 # Link flags
 #
-# -static-libstdc++ -static-libgcc are not optional on the target: the device
-# has libstdc++.so.6.0.21, that is GLIBCXX_3.4.21 (the GCC 5 ABI), and the
-# toolchain is GCC 9, which emits references up to 3.4.26. Linked dynamically
-# the binary does not start at all.
-#
-# Target only. On the host they ask for a static libstdc++ that most
-# distributions do not ship, and the link fails with "cannot find -lstdc++".
-GB_LDFLAGS = -static-libstdc++ -static-libgcc
 HOST_LDFLAGS = $(shell sdl2-config --libs) -lpthread -lm -ldl -lasound $(shell pkg-config --libs freetype2) \
 			   $(shell pkg-config --libs opusfile wavpack)
 #
 # --gc-sections: the other half of -ffunction-sections (see TARGET_CFLAGS).
 TARGET_LDFLAGS = $(FREETYPE_PREFIX)/lib/libfreetype.a $(AUDIO_LIBS) -lpthread -lm -ldl -lasound \
-				 $(GB_LDFLAGS) -Wl,--gc-sections
+				 -Wl,--gc-sections
 
 # FreeType for the target, built static: the rootfs has no libfreetype.so. The
 # host uses the system one. The device's fonts are plain OTF/TTF, so zlib,
@@ -211,22 +182,16 @@ WAVPACK_LIB = $(AUDIO_PREFIX)/lib/libwavpack.a
 AUDIO_LIBS = $(OPUSFILE_LIB) $(OPUS_LIB) $(OGG_LIB) $(WAVPACK_LIB)
 
 
-# Source files. src/gb holds a .c as well (the miniz shell) alongside the C++
-# core, so both searches reach into it.
+# Source files. Plain C only: no C++ is left in the tree.
 APP_SRCS := $(shell find src -name '*.c')
 LVGL_SRCS = $(shell find $(LVGL_DIR)/src -type f -name '*.c')
-
-# The C++ here is the Game Boy core under src/gb/core plus its facade. Separate
-# list because it takes different flags, and the link goes through the C++
-# compiler so that libstdc++ comes along.
-APP_CXX_SRCS := $(shell find src/gb -name '*.cpp')
-HOST_LD = $(CXX)
-TARGET_LD = $(CROSS_CXX)
+HOST_LD = $(CC)
+TARGET_LD = $(CROSS_CC)
 
 # Object files
-HOST_OBJS = $(APP_SRCS:src/%.c=build_host/%.o) $(APP_CXX_SRCS:src/%.cpp=build_host/%.opp) \
+HOST_OBJS = $(APP_SRCS:src/%.c=build_host/%.o) \
 			$(LVGL_SRCS:$(LVGL_DIR)/%.c=build_host/lvgl/%.o)
-TARGET_OBJS = $(APP_SRCS:src/%.c=build_target/%.o) $(APP_CXX_SRCS:src/%.cpp=build_target/%.opp) \
+TARGET_OBJS = $(APP_SRCS:src/%.c=build_target/%.o) \
 			  $(LVGL_SRCS:$(LVGL_DIR)/%.c=build_target/lvgl/%.o)
 
 .PHONY: all host target clean compile_commands.json
@@ -239,35 +204,9 @@ $(HOST_BIN): $(HOST_OBJS)
 	$(HOST_LD) -o $@ $(HOST_OBJS) $(HOST_LDFLAGS)
 	@echo "Host build complete: Run './$(HOST_BIN)' to start the simulator."
 
-# The key that opens streaming-keys.bin (src/system/streaming/streamkeys.h),
-# kept outside git and compiled into streamkeys.c. The header is rewritten only
-# when the key changes. Without the key file the build still works and the
-# player reads only a plain streaming-keys.ini.
-STREAMKEYS_KEY ?= streaming-keys.key
-STREAMKEYS_KEY_H = build_gen/streamkeys_key.h
-$(STREAMKEYS_KEY_H): FORCE
-	@mkdir -p $(dir $@)
-	@{ echo '// Generated by the Makefile from $(STREAMKEYS_KEY). Not in git.'; \
-	  if [ -f "$(STREAMKEYS_KEY)" ]; then \
-		hex=$$(tr -dc '0-9a-fA-F' < "$(STREAMKEYS_KEY)"); \
-		[ $${#hex} -eq 64 ] || { echo "$(STREAMKEYS_KEY) is not 32 bytes of hex" >&2; exit 1; }; \
-		echo '#define STREAMKEYS_KEY_LEN 32'; \
-		echo "static const unsigned char streamkeys_key[STREAMKEYS_KEY_LEN] = {$$(echo $$hex | sed 's/../0x&,/g')};"; \
-	  else \
-		echo '#define STREAMKEYS_KEY_LEN 0'; \
-	  fi; } > $@.tmp
-	@if cmp -s $@.tmp $@; then rm -f $@.tmp; else mv $@.tmp $@; \
-		if [ -f "$(STREAMKEYS_KEY)" ]; then echo "streamkeys: key from $(STREAMKEYS_KEY)"; \
-		else echo "streamkeys: no $(STREAMKEYS_KEY), this build reads only a plain streaming-keys.ini"; fi; fi
-build_host/system/streaming/streamkeys.o build_target/system/streaming/streamkeys.o: $(STREAMKEYS_KEY_H)
-
 build_host/%.o: src/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(HOST_CFLAGS) -c $< -o $@
-
-build_host/%.opp: src/%.cpp
-	@mkdir -p $(dir $@)
-	$(CXX) $(HOST_CXXFLAGS) -c $< -o $@
 
 build_host/lvgl/%.o: $(LVGL_DIR)/%.c
 	@mkdir -p $(dir $@)
@@ -373,7 +312,7 @@ check-abi:
 # included. Rewritten only when they differ, so a change of flags rebuilds
 # everything and nothing else does.
 TARGET_FLAGS_STAMP = build_target/.flags
-TARGET_FLAGS_LINE = $(TARGET_CFLAGS) | $(TARGET_CXXFLAGS) | $(TARGET_DEFAULT_OPT) $(TARGET_HOT_OPT) $(TARGET_HOT_PATTERNS)
+TARGET_FLAGS_LINE = $(TARGET_CFLAGS) | $(TARGET_DEFAULT_OPT) $(TARGET_HOT_OPT) $(TARGET_HOT_PATTERNS)
 $(TARGET_FLAGS_STAMP): FORCE
 	@mkdir -p $(dir $@)
 	@echo '$(TARGET_FLAGS_LINE)' | cmp -s - $@ || \
@@ -383,10 +322,6 @@ FORCE:
 build_target/%.o: src/%.c $(TARGET_FLAGS_STAMP)
 	@mkdir -p $(dir $@)
 	$(CROSS_CC) $(TARGET_CFLAGS) $(TARGET_OPT) -c $< -o $@
-
-build_target/%.opp: src/%.cpp $(TARGET_FLAGS_STAMP)
-	@mkdir -p $(dir $@)
-	$(CROSS_CXX) $(TARGET_CXXFLAGS) $(TARGET_OPT) -c $< -o $@
 
 build_target/lvgl/%.o: $(LVGL_DIR)/%.c $(TARGET_FLAGS_STAMP)
 	@mkdir -p $(dir $@)
@@ -512,8 +447,6 @@ $(WAVPACK_LIB): $(CROSS_CC)
 	$(CROSS_PATH) $(MAKE) -C $(WAVPACK_SRC) install
 
 # Header dependencies recorded by -MMD (see CFLAGS). The dashes keep make quiet
-# on the first build, when no .d files exist yet. The C++ objects end in .opp
-# so the two compile rules cannot overlap, which is why both suffixes are
-# substituted -- otherwise make reads an object file as a makefile.
--include $(patsubst %.opp,%.d,$(patsubst %.o,%.d,$(HOST_OBJS)))
--include $(patsubst %.opp,%.d,$(patsubst %.o,%.d,$(TARGET_OBJS)))
+# on the first build, when no .d files exist yet.
+-include $(patsubst %.o,%.d,$(HOST_OBJS))
+-include $(patsubst %.o,%.d,$(TARGET_OBJS))

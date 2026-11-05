@@ -15,21 +15,23 @@ lv_style_t theme_style_text_dim;
 lv_style_t theme_style_icon;
 lv_style_t theme_style_switch;		   // switch track, off state
 lv_style_t theme_style_switch_checked; // switch indicator, on state
+lv_style_t theme_style_switch_knob;	   // knob (must contrast with both states)
 lv_style_t theme_style_accent_bg;	   // anything that must follow the accent
 lv_style_t theme_style_slider_track;   // a slider's unfilled part
 
 // GNOME Adwaita (libadwaita) colours, dark variant: window #242424, cards
 // #303030 (white at 8%% over the window), accent blue #3584e4. Secondary text
 // is white at 55%%, flattened against the card colour.
+// Minimal R1: stark black / white / grey (no Adwaita blue).
 static theme_palette_t palette_dark = {
-	.screen_bg = LV_COLOR_MAKE(36, 36, 36),
-	.surface = LV_COLOR_MAKE(48, 48, 48),
-	.surface_pressed = LV_COLOR_MAKE(64, 64, 64),
-	.panel = LV_COLOR_MAKE(30, 30, 30),
-	.cover_bg = LV_COLOR_MAKE(30, 30, 30),
+	.screen_bg = LV_COLOR_MAKE(0, 0, 0),
+	.surface = LV_COLOR_MAKE(28, 28, 28),
+	.surface_pressed = LV_COLOR_MAKE(56, 56, 56),
+	.panel = LV_COLOR_MAKE(0, 0, 0),
+	.cover_bg = LV_COLOR_MAKE(20, 20, 20),
 	.text_primary = LV_COLOR_MAKE(255, 255, 255),
-	.text_secondary = LV_COLOR_MAKE(160, 160, 160),
-	.accent = LV_COLOR_MAKE(53, 132, 228),
+	.text_secondary = LV_COLOR_MAKE(170, 170, 170),
+	.accent = LV_COLOR_MAKE(255, 255, 255),
 	.dark = true,
 };
 
@@ -46,7 +48,7 @@ static theme_palette_t palette_light = {
 	.cover_bg = LV_COLOR_MAKE(224, 226, 230),
 	.text_primary = LV_COLOR_MAKE(50, 50, 50),
 	.text_secondary = LV_COLOR_MAKE(115, 115, 115),
-	.accent = LV_COLOR_MAKE(53, 132, 228),
+	.accent = LV_COLOR_MAKE(255, 255, 255),
 	.dark = false,
 };
 
@@ -68,13 +70,14 @@ static theme_palette_t *active = &palette_dark;
 
 // The accent presets, Adwaita's named accents, ordered as requested: blue
 // (the default), then warm to cool -- orange, yellow, green, purple, pink.
+// Minimal R1: every "accent" preset is white — no colour accents left.
 static const lv_color_t ACCENT_COLORS[THEME_ACCENT_COUNT] = {
-	LV_COLOR_MAKE(53, 132, 228), // blue (#3584e4, the default)
-	LV_COLOR_MAKE(255, 120, 0),  // orange (#ff7800)
-	LV_COLOR_MAKE(229, 165, 10), // yellow (#e5a50a)
-	LV_COLOR_MAKE(46, 194, 126), // green (#2ec27e)
-	LV_COLOR_MAKE(145, 65, 172), // purple (#9141ac)
-	LV_COLOR_MAKE(213, 97, 153), // pink (#d56199)
+	LV_COLOR_MAKE(255, 255, 255),
+	LV_COLOR_MAKE(255, 255, 255),
+	LV_COLOR_MAKE(255, 255, 255),
+	LV_COLOR_MAKE(255, 255, 255),
+	LV_COLOR_MAKE(255, 255, 255),
+	LV_COLOR_MAKE(255, 255, 255),
 };
 static int accent_index;
 
@@ -181,8 +184,12 @@ static void apply_palette(void) {
 
 	lv_style_set_image_recolor(&theme_style_icon, active->text_primary);
 
-	lv_style_set_bg_color(&theme_style_switch, active->surface_pressed);
+	// Minimal R1 B&W: accent is white. A white ON-track ate the default white
+	// LVGL knob, so the Bluetooth (and every other) toggle looked missing.
+	// Off-track is a mid grey so it reads on dark cards; knob stays black.
+	lv_style_set_bg_color(&theme_style_switch, lv_color_make(120, 120, 120));
 	lv_style_set_bg_color(&theme_style_switch_checked, active->accent);
+	lv_style_set_bg_color(&theme_style_switch_knob, lv_color_black());
 
 	lv_style_set_bg_color(&theme_style_accent_bg, active->accent);
 	lv_style_set_bg_color(&theme_style_slider_track, active->text_secondary);
@@ -215,6 +222,9 @@ void theme_init(void) {
 	lv_style_set_bg_opa(&theme_style_switch, LV_OPA_COVER);
 	lv_style_init(&theme_style_switch_checked);
 	lv_style_set_bg_opa(&theme_style_switch_checked, LV_OPA_COVER);
+	lv_style_init(&theme_style_switch_knob);
+	lv_style_set_bg_opa(&theme_style_switch_knob, LV_OPA_COVER);
+	lv_style_set_radius(&theme_style_switch_knob, LV_RADIUS_CIRCLE);
 
 	lv_style_init(&theme_style_accent_bg);
 	lv_style_set_bg_opa(&theme_style_accent_bg, LV_OPA_COVER);
@@ -222,23 +232,17 @@ void theme_init(void) {
 	lv_style_set_bg_opa(&theme_style_slider_track, LV_OPA_40);
 	lv_style_set_radius(&theme_style_slider_track, LV_RADIUS_CIRCLE);
 
-	// Whatever was chosen last time. Dark is the default for a first boot.
-	dark_selected = config_get_bool("ui", "dark_theme", true);
-
-	// The accent as it was left; both palettes carry the same one.
-	accent_index = (int)config_get_int("ui", "accent", 0);
-	if (accent_index < 0 || accent_index >= THEME_ACCENT_COUNT) {
-		accent_index = 0;
-	}
-	palette_dark.accent = ACCENT_COLORS[accent_index];
-	palette_light.accent = ACCENT_COLORS[accent_index];
-
-	dynamic_tint = config_get_bool("ui", "dynamic_tint", false);
+	// Minimal R1: locked dark greyscale. Accent is white so switches/sliders
+	// stay black-and-white; dynamic tint never runs.
+	dark_selected = true;
+	accent_index = 0;
+	palette_dark.accent = lv_color_make(255, 255, 255);
+	palette_light.accent = lv_color_make(255, 255, 255);
+	dynamic_tint = false;
 
 	rebuild_active();
 	apply_palette();
 
-	// The marker on the flash may be missing or older than these settings.
 	bootlogo_follow(active->dark, accent_index);
 }
 
@@ -246,10 +250,11 @@ void theme_apply_slider_knob(lv_obj_t *slider) {
 	if (!slider) {
 		return;
 	}
-	bool dark = theme()->dark;
-	lv_obj_set_style_border_color(slider, dark ? lv_color_black() : lv_color_make(120, 120, 120), LV_PART_KNOB);
-	lv_obj_set_style_border_opa(slider, dark ? LV_OPA_10 : LV_OPA_COVER, LV_PART_KNOB);
-	lv_obj_set_style_border_width(slider, dark ? 1 : 2, LV_PART_KNOB);
+	// White fill + white accent left knobs invisible on the filled side in B&W.
+	// Black outline always; keep the white face for the usual raised look.
+	lv_obj_set_style_border_color(slider, lv_color_black(), LV_PART_KNOB);
+	lv_obj_set_style_border_opa(slider, LV_OPA_COVER, LV_PART_KNOB);
+	lv_obj_set_style_border_width(slider, 2, LV_PART_KNOB);
 }
 
 void theme_register_refresh(theme_refresh_cb_t cb) {
@@ -375,49 +380,16 @@ static void refresh_all(void) {
 }
 
 void theme_toggle(void) {
-	dark_selected = !dark_selected;
-	rebuild_active();
-	apply_palette();
-
-	config_set_bool("ui", "dark_theme", active->dark);
-	config_save();
-
-	// The boot logo follows the theme and the accent; see bootlogo.h.
-	bootlogo_follow(active->dark, accent_index);
-
-	refresh_all();
+	// Minimal R1: theme is locked dark.
 }
 
 void theme_set_accent(int index) {
-	if (index < 0 || index >= THEME_ACCENT_COUNT) {
-		index = 0;
-	}
-	accent_index = index;
-	palette_dark.accent = ACCENT_COLORS[index];
-	palette_light.accent = ACCENT_COLORS[index];
-	rebuild_active(); // the tint is drawn from the accent, so it moves with it
-	apply_palette();
-
-	config_set_int("ui", "accent", index);
-	config_save();
-
-	bootlogo_follow(active->dark, accent_index);
-
-	refresh_all();
+	(void)index;
+	// Minimal R1: accent stays white.
 }
 
-bool theme_dynamic_tint(void) { return dynamic_tint; }
+bool theme_dynamic_tint(void) { return false; }
 
 void theme_set_dynamic_tint(bool on) {
-	if (dynamic_tint == on) {
-		return;
-	}
-	dynamic_tint = on;
-	rebuild_active();
-	apply_palette();
-
-	config_set_bool("ui", "dynamic_tint", on);
-	config_save();
-
-	refresh_all();
+	(void)on;
 }

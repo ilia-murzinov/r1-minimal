@@ -8,11 +8,9 @@
 #include <sys/stat.h>
 
 #include "src/gui/library/browser.h"
-#include "src/gui/library/audiobookextras.h"
 #include "src/gui/nowplaying/chapters.h"
 #include "src/gui/nowplaying/cover.h"
 #include "src/gui/nowplaying/coverloader.h"
-#include "src/gui/nowplaying/lyricsearch.h"
 #include "src/gui/library/medialist.h"
 #include "src/gui/fonts/fonts.h"
 #include "src/gui/shell/confirm.h"
@@ -28,11 +26,8 @@
 #include "src/gui/shell/topbar.h"
 #include "src/system/device/power.h"
 #include "src/system/playback/sleeptimer.h"
-#include "src/system/gearboy/gearboy.h"
-#include "src/system/streaming/radio.h"
 #include "src/system/audio/audio.h"
 #include "src/system/audio/readahead.h"
-#include "src/system/playback/audiobook.h"
 #include "src/system/playback/device_state.h"
 #include "src/system/remote/airplay.h"
 #include "src/system/remote/dlna.h"
@@ -40,24 +35,17 @@
 #include "src/system/core/config.h"
 #include "src/system/core/lang.h"
 #include "src/system/library/library.h"
-#include "src/system/library/lrclib.h"
 #include "src/system/library/lyrics.h"
 #include "src/system/device/led.h"
 #include "src/system/playback/playlist.h"
-#include "src/system/streaming/podcast.h"
-#include "src/system/streaming/podcastcache.h"
-#include "src/system/streaming/podcastsubs.h"
-#include "src/system/streaming/podcaststate.h"
-#include "src/system/streaming/qobuzcache.h"
-#include "src/system/streaming/qobuzsync.h"
-#include "src/system/streaming/tidalcache.h"
-#include "src/system/streaming/tidalsync.h"
 #include "src/system/core/utils.h"
 #include "src/system/audio/waveform.h"
 #include "src/system/net/wifi.h"
 
 #include "lvgl/src/core/lv_obj_event_private.h"
 #include "lvgl/lvgl.h"
+#include "src/gui/nowplaying/removed_features.h"
+
 
 lv_obj_t *player_screen;
 
@@ -1103,10 +1091,9 @@ static lv_color_t alt_mark(void) { return tone_shaped(ALT_MARK_SAT, ALT_MARK_LUM
 // shade in all three, light enough to read over the dark backdrop every
 // arrangement puts behind a sleeve.
 static lv_color_t chrome_accent(void) {
-	if (layout_wave_now || (cover_accent && album_tone)) {
-		return alt_mark();
-	}
-	return theme()->accent;
+	// Minimal R1: black chrome on the white play disc (and other transport).
+	// theme()->accent is white for B&W UI — that made the glyph vanish.
+	return lv_color_black();
 }
 
 // The type on that surface. Worked out rather than fixed so that a change to
@@ -1776,9 +1763,13 @@ static void lyrics_find_make_room(lv_obj_t *col) {
 }
 
 static void lyrics_find_sync(bool full) {
+	(void)full;
+	/* lyrics search removed permanently */
 	if (!lyrics_find_btn) {
 		return;
 	}
+	lv_obj_set_hidden(lyrics_find_btn, true);
+	return;
 	bool show = full && lyrics_now;
 	if (!show) {
 		lv_obj_set_hidden(lyrics_find_btn, true);
@@ -1996,241 +1987,25 @@ static void lyrics_settle(void) {
 }
 
 // ---------------------------------------------------------------------------
-// Words from LRCLIB, for a file with none
+// Online lyric search removed (no Wi‑Fi / LRCLIB in minimal build)
 // ---------------------------------------------------------------------------
 
-typedef struct {
-	char path[1024];
-	char title[256];
-	char artist[256];
-	char album[256];
-	int duration;
-	lrclib_result_t result;
-	lrclib_record_t *records;
-	int count;
-} lyrics_fetch_t;
-
-static bool lyrics_fetching; // one search at a time
-
-void player_lyrics_reload(const char *path) {
-	device_state_t state;
-	device_state_get(&state);
-	if (!path || strcmp(state.current_file, path) != 0) {
-		return;
-	}
-	// Read again, from the .lrc now beside the file. Words that were up stay up
-	// and change in place; otherwise the page is wanted, and comes in when the
-	// words arrive (lyrics_settle()).
-	bool up = lyrics_now;
-	lyrics_path[0] = '\0';
-	lyrics_request(&state);
-	if (!up) {
-		lyrics_commit(true);
-	}
-}
-
-static void lyrics_fetched(void *user) {
-	lyrics_fetch_t *job = user;
-	lyrics_fetching = false;
-	toast_busy_end();
-
-	switch (job->result) {
-	case LRCLIB_OK: {
-		// The list is for the track it was asked about, over the player it was
-		// asked from; with either gone it is no longer wanted.
-		device_state_t state;
-		device_state_get(&state);
-		if (sheet_open && strcmp(state.current_file, job->path) == 0) {
-			lyricsearch_open(job->path, job->records, job->count);
-			job->records = NULL;
-		}
-		break;
-	}
-	case LRCLIB_INSTRUMENTAL:
-		toast_plain("lyrics_instrumental");
-		break;
-	case LRCLIB_NOT_FOUND:
-		toast_plain("lyrics_not_found");
-		break;
-	case LRCLIB_NO_TAGS:
-		toast_error("lyrics_no_tags");
-		break;
-	default:
-		toast_error("lyrics_download_failed");
-		break;
-	}
-	lrclib_free(job->records, job->count);
-	free(job);
-}
-
-static void *lyrics_fetch_worker(void *arg) {
-	lyrics_fetch_t *job = arg;
-	job->result = lrclib_search(job->title, job->artist, job->album, job->duration, &job->records, &job->count);
-	if (!gui_post(lyrics_fetched, job)) {
-		lrclib_free(job->records, job->count);
-		free(job);
-	}
-	return NULL;
-}
-
-static void lyrics_search_run(void);
-
-// ---------------------------------------------------------------------------
-// Wi-Fi switched on for a search
-//
-// With Wi-Fi off the question offers to switch it on instead of searching; the
-// search then starts by itself once the link has an address, for the file that
-// was playing when the question was answered.
-// ---------------------------------------------------------------------------
-
-#define LYRICS_WIFI_POLL_MS 500
-#define LYRICS_WIFI_WAIT_MS 30000
-
-static lv_timer_t *lyrics_wifi_timer;
-static uint32_t lyrics_wifi_since;
-static char lyrics_wifi_path[1024];
-
-static bool lyrics_wifi_online(void) {
-	wifi_status_t wifi;
-	wifi_get_status(&wifi);
-	return wifi.state == WIFI_STATE_CONNECTED && wifi.ip[0] != '\0';
-}
-
-static void lyrics_wifi_wait_end(void) {
-	if (lyrics_wifi_timer) {
-		lv_timer_delete(lyrics_wifi_timer);
-		lyrics_wifi_timer = NULL;
-	}
-}
-
-static void lyrics_wifi_tick_cb(lv_timer_t *t) {
-	(void)t;
-	device_state_t state;
-	device_state_get(&state);
-	// Another track, or Wi-Fi switched off again: the search is no longer wanted.
-	if (!wifi_get_enabled() || strcmp(state.current_file, lyrics_wifi_path) != 0) {
-		lyrics_wifi_wait_end();
-		toast_busy_end();
-		return;
-	}
-	if (lyrics_wifi_online()) {
-		lyrics_wifi_wait_end();
-		toast_busy_end();
-		lyrics_search_run();
-		return;
-	}
-	if (lv_tick_elaps(lyrics_wifi_since) >= LYRICS_WIFI_WAIT_MS) {
-		lyrics_wifi_wait_end();
-		toast_busy_end();
-		toast_error("lyrics_wifi_failed");
-	}
-}
-
-static void lyrics_enable_wifi_cb(void *user) {
-	(void)user;
-	device_state_t state;
-	device_state_get(&state);
-	if (!state.current_file[0] || !playing_local_file(&state)) {
-		return;
-	}
-	snprintf(lyrics_wifi_path, sizeof(lyrics_wifi_path), "%s", state.current_file);
-	wifi_set_enabled(true);
-	lyrics_wifi_since = lv_tick_get();
-	if (!lyrics_wifi_timer) {
-		lyrics_wifi_timer = lv_timer_create(lyrics_wifi_tick_cb, LYRICS_WIFI_POLL_MS, NULL);
-	}
-	toast_busy_dismissable("lyrics_wifi_connecting");
-}
-
-// Wi-Fi is off and can be switched on: the question offers that in place of
-// the search.
-static bool lyrics_offer_wifi(void) {
-	if (lyrics_wifi_timer) {
-		toast_busy_dismissable("lyrics_wifi_connecting");
-		return true;
-	}
-	if (wifi_get_enabled() || !wifi_available()) {
-		return false;
-	}
-	confirm_show("lyrics_download_title", "lyrics_wifi_off_note", "lyrics_enable_wifi", lyrics_enable_wifi_cb, NULL);
-	return true;
-}
-
-// The file playing looked up on LRCLIB, on a thread of its own; what is found
-// is listed to pick from.
-static void lyrics_search_start(void) {
-	if (!lyrics_fetching && lyrics_offer_wifi()) {
-		return;
-	}
-	lyrics_search_run();
-}
-
-static void lyrics_search_run(void) {
-	if (lyrics_fetching) {
-		toast_busy_dismissable("lyrics_downloading");
-		return;
-	}
-	wifi_status_t wifi;
-	wifi_get_status(&wifi);
-	if (wifi.state != WIFI_STATE_CONNECTED) {
-		toast_error("lyrics_no_wifi");
-		return;
-	}
-	device_state_t state;
-	device_state_get(&state);
-	if (!state.current_file[0] || !playing_local_file(&state)) {
-		return;
-	}
-
-	lyrics_fetch_t *job = calloc(1, sizeof(*job));
-	if (!job) {
-		return;
-	}
-	snprintf(job->path, sizeof(job->path), "%s", state.current_file);
-	snprintf(job->title, sizeof(job->title), "%s", state.metadata.title);
-	// The track's own performer is who LRCLIB files it under; the album's
-	// artist only when the track names none.
-	snprintf(job->artist, sizeof(job->artist), "%s", state.metadata.artist[0] ? state.metadata.artist : state.metadata.album_artist);
-	snprintf(job->album, sizeof(job->album), "%s", state.metadata.album);
-	job->duration = (int)(state.progress_total_secs + 0.5);
-
-	pthread_t thread;
-	if (pthread_create(&thread, NULL, lyrics_fetch_worker, job) != 0) {
-		free(job);
-		return;
-	}
-	pthread_detach(thread);
-	lyrics_fetching = true;
-	// A tap puts the spinner away while LRCLIB is asked again after a failure;
-	// the list still opens when the answer comes.
-	toast_busy_dismissable("lyrics_downloading");
-}
-
-// The answer to the question below.
-static void lyrics_download_cb(void *user) {
-	(void)user;
-	lyrics_search_start();
-}
-
-// The button over the words: other words for the same file, in their place.
 static void lyrics_find_cb(lv_event_t *e) {
 	(void)e;
-	if (player_sheet_drag_active()) {
-		return;
-	}
-	lyrics_search_start();
+	toast_plain("Lyrics search removed");
 }
+
 
 // A swipe to the words of a file that has none.
 static void lyrics_offer_download(void) {
-	if (lyrics_fetching) {
+	if (false /* lyrics_fetching */) {
 		toast_busy_dismissable("lyrics_downloading");
 		return;
 	}
 	if (lyrics_offer_wifi()) {
 		return;
 	}
-	confirm_show("lyrics_download_title", "lyrics_download_note", "lyrics_download", lyrics_download_cb, NULL);
+	confirm_show("lyrics_download_title", "lyrics_download_note", "lyrics_download", NULL, NULL);
 }
 
 // The swipe that pulls the page in (on the sleeve, right to left) or pushes it
@@ -3676,9 +3451,6 @@ static bool current_podcast_episode(void) {
 // The playing episode's podcast, for callers outside the player (the control
 // centre): the same lookup the player uses for its own star, exposed so both
 // stars say the same thing.
-bool player_current_podcast_feed(long long *id_out, podcast_feed_t *feed_out) {
-	return podcast_current_feed(id_out, feed_out);
-}
 
 // The same for Tidal. Two separate questions rather than one returning "which
 // service": the two caches live in different directories, so a path can answer
@@ -4723,7 +4495,7 @@ void player_refresh_now_playing(void) {
 #define SHEET_ANIM_MS 220
 
 // Sideways movement past this is a drag, not a tap.
-#define DRAG_COMMIT_PX 10
+#define DRAG_COMMIT_PX 16
 
 static int sheet_width;
 static lv_obj_t *sheet_under; // the page the sheet first slid over
@@ -4831,6 +4603,8 @@ void player_set_statusbar_always(bool on) {
 }
 
 void player_sheet_open(bool animate) {
+	(void)animate;
+	animate = false; // Minimal R1: instant open, no slide
 	// Nothing to show while another mode owns the sound: the sheet is about a
 	// track this player is playing, and in Bluetooth receiver mode the track is
 	// on somebody else's machine. Refusing to open is the honest answer -- an
@@ -4881,6 +4655,8 @@ static void sheet_hidden_anim_ready_cb(lv_anim_t *a) {
 }
 
 void player_sheet_close(bool animate) {
+	(void)animate;
+	animate = false; // Minimal R1: instant close, no slide
 	bool was_open = sheet_open;
 	sheet_open = false;
 	smooth_timer_sync();
@@ -5073,15 +4849,81 @@ static void panel_edge_drag_cb(lv_event_t *e) {
 }
 
 void player_sheet_attach_drag(lv_obj_t *obj, bool opening) {
-	if (!obj) {
+	// Minimal R1: no sideways swipe to open/close Now Playing — home tile only.
+	(void)obj;
+	(void)opening;
+}
+
+// Upward pull from the bottom band → Now Playing. Mirrors coverflow's edge
+// gesture so home can drop the Now Playing tile.
+#define PLAYER_EDGE_H 56
+#define PLAYER_EDGE_COMMIT_PX 18
+
+static bool edge_up_committed;
+
+bool player_sheet_edge_up_active(void) { return edge_up_committed; }
+
+static void edge_up_clear_cb(void *unused) {
+	(void)unused;
+	edge_up_committed = false;
+}
+
+static void edge_up_cb(lv_event_t *e) {
+	static bool tracking;
+	static bool armed;
+	static lv_point_t start;
+
+	lv_indev_t *indev = lv_indev_active();
+	if (!indev) {
+		return;
+	}
+	lv_event_code_t code = lv_event_get_code(e);
+	int band = (int)(uintptr_t)lv_event_get_user_data(e);
+
+	if (code == LV_EVENT_PRESSED) {
+		lv_indev_get_point(indev, &start);
+		tracking = !player_sheet_is_open() && start.y >= band;
+		armed = false;
+		return;
+	}
+	if (!tracking) {
 		return;
 	}
 
-	lv_obj_set_clickable(obj, true);
-	lv_obj_add_event_cb(obj, sheet_drag_cb, LV_EVENT_PRESSED, (void *)(uintptr_t)opening);
-	lv_obj_add_event_cb(obj, sheet_drag_cb, LV_EVENT_PRESSING, (void *)(uintptr_t)opening);
-	lv_obj_add_event_cb(obj, sheet_drag_cb, LV_EVENT_RELEASED, (void *)(uintptr_t)opening);
-	lv_obj_add_event_cb(obj, sheet_drag_cb, LV_EVENT_PRESS_LOST, (void *)(uintptr_t)opening);
+	lv_point_t p;
+	lv_indev_get_point(indev, &p);
+	int dy = p.y - start.y;
+
+	if (code == LV_EVENT_PRESSING) {
+		if (!armed) {
+			if (dy >= PLAYER_EDGE_COMMIT_PX) {
+				tracking = false;
+				return;
+			}
+			int dx = p.x - start.x;
+			int adx = dx < 0 ? -dx : dx;
+			if (dy > -PLAYER_EDGE_COMMIT_PX || -dy <= adx) {
+				return;
+			}
+			armed = true;
+			edge_up_committed = true;
+		}
+		return;
+	}
+	if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
+		tracking = false;
+		if (armed) {
+			armed = false;
+			player_sheet_open(true);
+			lv_async_call(edge_up_clear_cb, NULL);
+		}
+	}
+}
+
+void player_sheet_attach_edge_up(lv_obj_t *obj, gui_config_t *cfg) {
+	// Minimal R1: no upward swipe to open Now Playing.
+	(void)obj;
+	(void)cfg;
 }
 
 // Builds the player sheet: artwork, controls and the poll that drives them.
@@ -5699,7 +5541,7 @@ void player_init(gui_config_t *cfg) {
 	layout_choice = (saved == (int)PLAYER_LAYOUT_ALTERNATIVE)	? PLAYER_LAYOUT_ALTERNATIVE
 					: (saved == (int)PLAYER_LAYOUT_STUDIO)		? PLAYER_LAYOUT_STUDIO
 																: PLAYER_LAYOUT_STANDARD;
-	cover_accent = config_get_bool("screen", "cover_accent", false);
+	cover_accent = false; // Minimal R1: greyscale chrome only
 	layout_alt_now = false; // apply_layout() below puts the standard one up first
 	layout_studio_now = false;
 	apply_layout();

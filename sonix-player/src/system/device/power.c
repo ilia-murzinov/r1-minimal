@@ -9,7 +9,6 @@
 #include "lvgl/src/misc/lv_timer_private.h"
 
 #include "src/system/audio/waveform.h"
-#include "src/system/device/ota.h"
 #include "src/system/device/system.h"
 
 #include <dirent.h>
@@ -19,30 +18,16 @@
 #include "src/system/audio/alsa-controls.h"
 #include "src/system/audio/audio.h"
 #include "src/system/audio/headset.h"
-#include "src/system/library/audiobookdb.h"
 #include "src/system/device/clock.h"
 #include "src/system/playback/device_state.h"
-#include "src/system/remote/dlna.h"
-#include "src/system/remote/sonixlink.h"
-#include "src/system/streaming/qobuzcache.h"
-#include "src/system/streaming/podcastcache.h"
-#include "src/system/streaming/podcastdl.h"
-#include "src/system/streaming/tidalcache.h"
 #include "src/system/device/adb.h"
 #include "src/system/library/library.h"
-#include "src/system/remote/airplay.h"
-#include "src/system/streaming/radio.h"
-#include "src/system/net/wifi.h"
-#include "src/system/net/wifitransfer.h"
-#include "src/system/lastfm/lastfm.h"
 #include "src/system/bluetooth/bluetooth.h"
 #include "src/system/bluetooth/btreceiver.h"
 #include "src/system/core/config.h"
 #include "src/system/core/logging.h"
 #include "src/system/device/usb.h"
 #include "src/system/audio/usbdac.h"
-#include "src/system/gearboy/gearboy.h"
-#include "src/system/audio/metronome.h"
 #include "src/system/device/led.h"
 #include "src/system/device/sysinfo.h"
 #include "src/system/device/axpcharge.h"
@@ -573,106 +558,25 @@ static void headset_keys_wake(void) {
 // ---------------------------------------------------------------------------
 // Parking the radio
 //
-// The stock player switches Wi-Fi off before every suspend (0x47f730 ->
-// system_if_wifi_turn_off, and it waits up to a second for the confirmation)
-// and switches it back on afterwards if the setting says so. An associated
-// CYW43438 is 20-40 mA of the standby budget, and the SDIO rail it hangs off
-// is deliberately kept alive across a suspend (msc0_keep_power_in_suspend=y),
-// so nothing else is going to save it.
-//
-// Not on every screen-off, though: the screen goes dark after thirty seconds
-// and a pocket-check a minute later would find the radio re-associating for no
-// reason. Only after the screen has been dark this long with nothing playing.
-//
-// Sixty seconds, the same wait the suspend uses, and the same wait for both
-// radios: a minute after the screen goes dark, anything nobody is using goes
-// off -- Bluetooth first, then Wi-Fi, then the SoC itself if the Standby toggle
-// allows it. The radios do not wait for that toggle, and with them off the
-// suspend becomes possible in the first place.
+// An idle Bluetooth radio is worth exactly as much off as on: a minute after
+// the screen goes dark, with nothing connected, it goes off, and the suspend
+// becomes possible in the first place.
 #define RADIO_PARK_AFTER_MS_DEFAULT (60 * 1000)
 static uint32_t g_radio_park_after_ms = RADIO_PARK_AFTER_MS_DEFAULT;
 
-// No settings switch for this: parking is always on, and the two in_use() tests
-// below are the only places that decide when not to switch off.
-static bool g_wifi_parked; // this module switched it off, so it switches it back on
-static bool g_bt_parked;
-
-// Whether what is playing right now comes off the network. The download flags
-// tested by wifi_in_use() do not cover it: they are raised while a fetch is
-// wanted and dropped as soon as the bytes are in, so an album whose next track
-// is already cached looks exactly like an idle device -- and parking the radio
-// there means the track after that never arrives. What decides is who owns the
-// file being played.
-//
-// radio_is_playing(), not radio_is_active(): a station merely loaded and
-// stopped uses nothing, and counting it as in-use would leave the radio on and
-// the automatic shutdown disabled for the rest of the day after one listen.
-static bool streaming_playback_active(void) {
-	if (radio_is_playing()) {
-		return true;
-	}
-	if (audio_get_status() == AUDIO_STATUS_STOPPED) {
-		return false;
-	}
-
-	char path[512];
-	audio_get_current_file(path, sizeof(path));
-	if (!path[0]) {
-		return false;
-	}
-	return qobuzcache_owns(path) || tidalcache_owns(path) || podcastcache_owns(path);
-}
-
-// Whether the network is the point rather than an idle drain: an AirPlay
-// receiver waiting to be found, a DLNA server, a browser halfway through an
-// upload, a station streaming, a Qobuz/Tidal/podcast fetch or a Last.fm request
-// in flight.
-//
-// The *_network_wanted() halves matter as much as the downloading ones: between
-// the end of one track and the first bytes of the next there is an HTTPS request
-// during which nothing plays and nothing downloads, and parking the radio in
-// that gap stops the next track from ever arriving.
-static bool wifi_in_use(void) {
-	// A scan or a connect in flight counts as use: parking the radio out from
-	// under wpa_supplicant mid-association leaves the driver to sort out a
-	// teardown it did not expect.
-	return wifi_busy() || wifi_scan_running() || streaming_playback_active() || airplay_get_enabled() ||
-		   dlna_get_enabled() || sonixlink_get_enabled() ||
-		   wifitransfer_get_enabled() || qobuzcache_downloading_id() > 0 ||
-		   qobuzcache_network_wanted() || tidalcache_downloading_id() > 0 || tidalcache_network_wanted() ||
-		   podcastcache_downloading_id() > 0 || podcastcache_network_wanted() || podcastdl_busy() ||
-		   lastfm_network_wanted() || ota_busy();
-}
+static bool g_bt_parked; // this module switched it off, so it switches it back on
 
 // Pushes the next suspend attempt out by the anti-hammer delay. A radio that has
 // just been told to go off is still going off: writing `mem` while the SDIO
 // chip's teardown is in flight leaves every suspend failing with the main thread
-// stuck in D on wait_on_page_bit. The park and the suspend both fall due sixty
-// seconds after the screen goes dark, so without this they would land on the
-// same tick.
+// stuck in D on wait_on_page_bit.
 static void mem_defer_after_radio_change(void);
 
-// Takes Wi-Fi down and records that this module did it, so the same module puts
-// it back. Shared by the idle timer below and the suspend path.
-static void park_wifi_now(void) {
-	if (g_wifi_parked || !wifi_get_enabled()) {
-		return;
-	}
-	g_wifi_parked = true;
-	printf("power: Wi-Fi off\n");
-	wifi_set_enabled_transient(false);
-	mem_defer_after_radio_change();
-}
-
 // Bluetooth's own "the point rather than an idle drain": a sink being written
-// to, a link that is up at all, a scan or a pairing in flight. A radio with
-// nothing on the other end of it is worth exactly as much off as on.
-//
-// SonixLink switched on counts, as it does for the Wi-Fi radio: a phone can
-// reach it over Bluetooth, and a parked radio is one the phone cannot find.
+// to, a link that is up at all, a scan or a pairing in flight.
 static bool bluetooth_in_use(void) {
 	return bluetooth_audio_active() || bluetooth_connected_device(NULL) || bluetooth_scan_running() ||
-		   bluetooth_busy() || sonixlink_get_enabled();
+		   bluetooth_busy();
 }
 
 // Whether the player has anything on. This is what holds the shutdown timer at
@@ -681,9 +585,7 @@ static bool bluetooth_in_use(void) {
 //
 // A pair of headphones merely connected is not on it: a silent link is exactly
 // the state the shutdown timer exists for. Nor is an AirPlay or DLNA server
-// switched on but idle -- those hold the Wi-Fi radio (see wifi_in_use) without
-// holding the device awake, and counting them here would let one forgotten
-// toggle disable the automatic shutdown for good.
+// switched on but idle.
 //
 // A key pressed with the screen dark counts. Skipping tracks in a pocket is the
 // user doing something, and switching off under their fingers is not what a
@@ -693,12 +595,7 @@ static bool player_is_busy(bool playing, uint32_t input_idle) {
 		   input_idle < POWER_TICK_MS * 4 ||	   // a key just pressed
 		   usbdac_is_active() ||				   // a computer feeding the DAC
 		   usb_storage_active() ||				   // the card exported over USB
-		   gearboy_running() ||					   // the emulator
-		   library_scan_running() ||			   // a scan, which is also writing to the card
-		   audiobookdb_scan_running() || wifitransfer_running() || dlna_running() || airplay_running() ||
-		   sonixlink_is_connected() || // a phone driving the player, not a switch left on
-		   qobuzcache_downloading_id() > 0 || tidalcache_downloading_id() > 0 || podcastcache_downloading_id() > 0 ||
-		   ota_busy(); // a firmware update being fetched
+		   library_scan_running();				   // a scan, which is also writing to the card
 }
 
 static void park_bluetooth_now(void) {
@@ -711,34 +608,6 @@ static void park_bluetooth_now(void) {
 	mem_defer_after_radio_change();
 }
 
-// Everything that holds the Wi-Fi radio up.
-//
-// The Bluetooth half of it is not a mistake: the two radios sit on one chip.
-// Taking Wi-Fi down mid-teardown is the hazard described over park_wifi_now(),
-// and `ifconfig wlan0 down` -- which is the whole of the firmware's
-// wifi_off.sh -- takes bcmdhd through dhd_stop() on the shared part.
-//
-// It asks about the LINK and not about sound going over it. With the screen
-// already dark and the album finishing, "playing" goes false the instant the
-// last track ends, and the very next pass -- 250 ms later -- would otherwise
-// park the Wi-Fi radio out from under a live pair of headphones. The cost is
-// the Wi-Fi radio staying associated while headphones are connected and quiet;
-// the alternative is dropping the link the user is wearing.
-static bool wifi_wanted(void) {
-	return wifi_in_use() || bluetooth_busy() || bluetooth_audio_active() || bluetooth_connected_device(NULL);
-}
-
-// A minute after a radio stops being wanted, it goes off. Not "unless something
-// is playing", not "unless the Standby toggle is on" -- a radio with nothing on
-// the other end of it is worth exactly as much off as on, and music coming out
-// of the jack is no reason to keep the Wi-Fi associated.
-//
-// The minute runs from the later of two moments: the screen going dark, and the
-// radio falling idle. Running it from the screen alone would make the wait
-// vanish whenever the two do not coincide -- pausing an internet station an hour
-// into a dark screen would take the Wi-Fi down on the next pass. The wait exists
-// so that a pause somebody is about to undo does not cost a reassociation.
-static uint32_t g_wifi_idle_since;
 static uint32_t g_bt_idle_since;
 
 static void park_radios_if_idle(uint32_t now) {
@@ -746,9 +615,6 @@ static void park_radios_if_idle(uint32_t now) {
 	// below is "how long has nobody wanted this".
 	if (g_screen_on || bluetooth_in_use()) {
 		g_bt_idle_since = now;
-	}
-	if (g_screen_on || wifi_wanted()) {
-		g_wifi_idle_since = now;
 	}
 	if (g_screen_on) {
 		return;
@@ -765,20 +631,9 @@ static void park_radios_if_idle(uint32_t now) {
 		return;
 	}
 
-	if (g_wifi_parked || !wifi_get_enabled() || since(g_wifi_idle_since, now) < g_radio_park_after_ms) {
-		return;
-	}
-
-	fprintf(stderr, "power: parking Wi-Fi after %u ms unused\n", since(g_wifi_idle_since, now));
-	park_wifi_now();
 }
 
 static void unpark_radios(void) {
-	if (g_wifi_parked) {
-		g_wifi_parked = false;
-		printf("power: Wi-Fi back on\n");
-		wifi_set_enabled_transient(true);
-	}
 	if (g_bt_parked) {
 		g_bt_parked = false;
 		printf("power: Bluetooth back on\n");
@@ -1025,18 +880,6 @@ void power_shutdown(void) {
 	// player does on its way out: whatever the clock has learned since it was
 	// last set is otherwise lost the moment the power goes.
 	clock_shutdown();
-
-	// The radio database is on the card: close it so its journal is tidied
-	// away before the power goes, rather than left for the next boot to find.
-	radio_store_close();
-
-	// Streamed and downloaded tracks are transient and must not survive a
-	// power cycle: without this the hidden folders carry a gigabyte of files
-	// the user never put there and will not listen to again.
-	qobuzcache_clear_on_exit();
-	tidalcache_clear_on_exit();
-	podcastcache_clear_on_exit();
-	dlna_clear_on_exit();
 
 	// Dark the panel first: `poweroff` goes through init's shutdown hooks,
 	// which it must -- the raw syscall with USB attached leaves the PMIC to
@@ -1287,10 +1130,6 @@ static void suspend_if_idle(uint32_t now, bool playing) {
 	// device from scratch, route included, which is the path every unpause
 	// exercises. What must not cross the suspend is a live ALSA object, not a
 	// remembered position: that sits in RAM, and RAM is preserved.
-	if (wifi_in_use()) {
-		mem_skip("something is using the network");
-		return;
-	}
 	// Busy first, so the log tells the truth: bluetooth_in_use() counts a job in
 	// flight as use, and right after the park that job is this file's own.
 	if (bluetooth_busy()) {
@@ -1346,17 +1185,6 @@ static void suspend_if_idle(uint32_t now, bool playing) {
 		mem_skip("ADB is on with the cable plugged in");
 		return;
 	}
-	if (wifi_get_enabled()) {
-		// Wi-Fi goes off now, but the suspend waits for a later tick: the SDIO
-		// chip's teardown is asynchronous, and writing `mem` right after the
-		// radio goes down leaves every suspend failing with the main thread
-		// stuck in D on wait_on_page_bit. Thirty seconds between the two gives
-		// the driver time to settle.
-		park_wifi_now();
-		mem_skip("Wi-Fi just switched off: mem starts on the next round");
-		return;
-	}
-
 	suspend_to_ram();
 }
 
@@ -1736,10 +1564,7 @@ static void power_timer_cb(lv_timer_t *timer) {
 	// comes in over A2DP, so neither of the first two answers says anything
 	// about it. Streaming rather than merely active, because the mode left on
 	// with the phone paused is exactly the idle state the timer exists for.
-	// The metronome counts as music: a player clicking in a pocket with the
-	// screen dark must not go to sleep under it.
-	bool playing = (audio_get_status() == AUDIO_STATUS_PLAYING) || radio_is_playing() || btreceiver_is_streaming() ||
-				   metronome_running();
+	bool playing = (audio_get_status() == AUDIO_STATUS_PLAYING) || btreceiver_is_streaming();
 	if (playing) {
 		g_last_playing_ms = now;
 	}
@@ -1980,4 +1805,4 @@ void power_init(const power_config_t *cfg, lv_display_t *disp) {
 		   g_mem_enabled ? "TEST" : "no", (unsigned long)mem_secs);
 }
 
-bool power_radios_parked(void) { return g_wifi_parked || g_bt_parked; }
+bool power_radios_parked(void) { return g_bt_parked; }

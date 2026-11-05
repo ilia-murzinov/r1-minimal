@@ -19,12 +19,11 @@
 #include "src/gui/shell/theme.h"
 #include "src/gui/shell/topbar.h"
 #include "src/gui/shell/toast.h"
-#include "src/system/library/audiobookdb.h"
 #include "src/system/playback/playlist.h"
-#include "src/system/streaming/podcastdl.h"
 #include "src/system/core/lang.h"
 #include "src/system/library/library.h"
 #include "src/system/device/power.h"
+
 
 // Fast enough that the number never looks stuck, slow enough that redrawing it
 // costs nothing next to reading tags off a card.
@@ -180,7 +179,7 @@ static void pick_read_folders(void) {
 	}
 	struct dirent *de;
 	while ((de = readdir(dir)) != NULL) {
-		if (de->d_name[0] == '.' || playlist_is_junk_name(de->d_name) || strcasecmp(de->d_name, AUDIOBOOKDB_FOLDER) == 0 || strcasecmp(de->d_name, PODCASTDL_FOLDER) == 0) {
+		if (de->d_name[0] == '.' || playlist_is_junk_name(de->d_name) || strcasecmp(de->d_name, "Audiobooks") == 0 || strcasecmp(de->d_name, "Podcast") == 0 || strcasecmp(de->d_name, "Podcasts") == 0) {
 			continue;
 		}
 		char path[768];

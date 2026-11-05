@@ -29,19 +29,10 @@
 #include "src/system/audio/audio.h"
 #include "src/system/audio/alsa-controls.h"
 #include "src/system/playback/device_state.h"
-#include "src/system/library/audiobookdb.h"
 #include "src/system/audio/eq.h"
-#include "src/system/remote/dlna.h"
-#include "src/system/gearboy/gbdb.h"
 #include "src/system/input/hookclicks.h"
 #include "src/system/input/keymap.h"
 #include "src/system/core/panel.h"
-#include "src/system/streaming/qobuzcache.h"
-#include "src/system/streaming/podcastcache.h"
-#include "src/system/streaming/podcastsubs.h"
-#include "src/system/streaming/podcaststate.h"
-#include "src/system/streaming/radio.h"
-#include "src/system/streaming/tidalcache.h"
 #include "src/system/library/library.h"
 #include "src/system/core/logging.h"
 #include "src/system/library/playlists.h"
@@ -808,12 +799,10 @@ static void card_databases_detach(void) {
 	// of play would otherwise read as "the track ended, start it again".
 	device_state_note_storage_gone();
 	audio_stop();
-	podcaststate_set_root(NULL);
 
 	logging_suspend_for_usb(); // closes the on-card log file
 	btlog_card_release();
 	library_close();
-	audiobookdb_close();
 	printf("storage: card databases closed for removal\n");
 }
 
@@ -832,8 +821,6 @@ static void card_databases_attach(const char *root) {
 	const int room = (int)sizeof(path) - 32;
 	snprintf(path, sizeof(path), "%.*s/.local/library.db", room, root);
 	library_open(path);
-	snprintf(path, sizeof(path), "%.*s/.local/audiobooks.db", room, root);
-	audiobookdb_open(path);
 
 	// The card may have been written somewhere else while it was out: looked
 	// over in the background, as soon as the index is open.
@@ -849,13 +836,6 @@ static void card_databases_attach(const char *root) {
 	eq_presets_set_dir(root);
 	peq_presets_set_dir(root);
 	mseb_presets_set_dir(root);
-	qobuzcache_set_root(root);
-	tidalcache_set_root(root);
-	podcastcache_set_root(root);
-	podcastsubs_set_root(root);
-	podcaststate_set_root(root);
-	dlna_set_root(root);
-	gbdb_set_root(root);
 
 	// The log, from the setting rather than from a remembered flag: a flag does
 	// not survive two remove events, and a failed reopen consumes it for good.
@@ -871,9 +851,6 @@ void storage_card_files_recheck(void) {
 		return;
 	}
 	library_reopen_if_replaced();
-	audiobookdb_reopen_if_replaced();
-	radio_store_reopen_if_replaced();
-	podcastsubs_reload_if_replaced();
 	cover_cache_reopen_if_replaced();
 }
 
@@ -1045,7 +1022,6 @@ void storage_release_for_shutdown(void) {
 
 	card_databases_detach(); // playback, the log, the library and audiobook databases
 	cover_set_cache_dir(NULL); // the thumbnail cache moves to /tmp
-	radio_store_close();
 	sync();
 
 	// Unmounting is what every driver leaves clean. When something still holds

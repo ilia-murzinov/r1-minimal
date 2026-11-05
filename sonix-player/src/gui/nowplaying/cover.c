@@ -14,13 +14,13 @@
 #include "src/system/db/sqlite3.h"
 
 #include "src/system/library/albumart.h"
-#include "src/system/streaming/podcastcache.h"
 #include "src/system/image/art_shrink.h"
 #include "src/system/image/jpeg_planes.h"
 #include "src/system/image/jpeg_scaled.h"
 #include "src/system/image/png_scaled.h"
 #include "src/system/image/stb_image_decl.h"
 #include "src/system/core/utils.h"
+#include "src/gui/nowplaying/removed_features.h"
 
 // The backdrop is blurred at half resolution and stretched back up. Blurring
 // the small copy (rather than relying on the stretch alone) is what keeps it

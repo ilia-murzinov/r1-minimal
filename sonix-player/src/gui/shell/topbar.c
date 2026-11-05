@@ -13,9 +13,7 @@
 #include "src/gui/shell/clocklabel.h"
 #include "src/gui/shell/icons.h"
 #include "src/gui/nowplaying/player.h"
-#include "src/gui/shell/quickpanel.h"
 #include "src/gui/shell/theme.h"
-#include "src/system/remote/airplay.h"
 #include "src/system/audio/alsa-controls.h"
 #include "src/system/audio/audio.h"
 #include "src/system/audio/usbaudio.h"
@@ -25,13 +23,9 @@
 #include "src/system/playback/device_state.h"
 #include "src/system/bluetooth/btreceiver.h"
 #include "src/system/device/led.h"
-#include "src/system/streaming/podcastcache.h"
 #include "src/system/device/power.h"
-#include "src/system/remote/sonixlink.h"
 #include "src/system/device/usb.h"
 #include "src/system/audio/usbdac.h"
-#include "src/system/net/wifi.h"
-#include "src/system/net/wifitransfer.h"
 
 // The battery bitmaps are rendered from 24x24 SVGs at this size. The shell is
 // drawn by the icon; the charge level is a plain rectangle behind it, showing
@@ -79,8 +73,6 @@
 // How far down a press has to end, with no drag having started, for the pull on
 // the status bar to count as a flick and open the control centre anyway.
 // Comfortably more than the wobble of a tap.
-#define FLICK_OPEN_PX 24
-
 // Over the player's artwork the bar blurs whatever is drawn under it, as it is
 // drawn, and darkens it towards black about as far as the block behind the
 // player's controls (BACKDROP_BRIGHTNESS_PCT in cover.c), so the white type
@@ -100,12 +92,9 @@ static lv_obj_t *hp_icon; // headphone jack indicator: hidden / theme / gold
 static lv_obj_t *play_icon;		 // play/pause indicator: hidden when nothing is loaded
 static lv_obj_t *library_icon;	 // Detect changes at work, or just done
 static lv_timer_t *library_timer; // takes the check glyph away
-static lv_obj_t *sonixlink_icon; // shown while a phone is driving the player
 static void refresh_play_icon(const device_state_t *state);
-static void refresh_sonixlink_icon(void);
 static lv_obj_t *clock_label;
 static lv_obj_t *bt_icon;   // bluetooth, leftmost of the right-hand group
-static lv_obj_t *wifi_icon; // wifi, between bluetooth and the charge percentage
 static lv_obj_t *container_left;  // volume group (and the clock, when "left")
 static lv_obj_t *container_right; // battery group (and the clock, when "right")
 static lv_timer_t *battery_timer;
@@ -150,7 +139,6 @@ static lv_color_t shell_color(bool known) {
 	}
 	return known ? theme()->text_primary : theme()->text_secondary;
 }
-static lv_timer_t *clock_timer;
 static lv_timer_t *radio_timer;
 
 // Cavity geometry scaled to BATTERY_ICON_SIZE, worked out once at init.
@@ -214,23 +202,6 @@ static void update_battery_indicator(int percent, bool charging) {
 // Redraws the clock. Before the time has been set there is nothing truthful to
 // show, so it reads as blank rather than as 1970.
 void topbar_refresh_clock(void) { clocklabel_refresh(clock_label); }
-
-static void clock_timer_cb(lv_timer_t *timer) {
-	(void)timer;
-	// A time zone the network has just located goes in place first, so the
-	// bar shows the time in it.
-	clock_poll();
-	topbar_refresh_clock();
-}
-
-static void clock_changed_cb(void *unused) {
-	(void)unused;
-	clock_poll();
-	topbar_refresh_clock();
-}
-
-// From the network attempt's thread: onto this one.
-static void clock_changed(void) { gui_post(clock_changed_cb, NULL); }
 
 static void remember_timer_cb(lv_timer_t *timer) {
 	(void)timer;
@@ -412,43 +383,8 @@ static bool bt_codec_color(const char *codec, lv_color_t *out) {
 // nothing on the other end, which is the difference between the wifi being on
 // and the wifi being connected.
 void topbar_refresh_radios(void) {
-	if (wifi_icon) {
-		wifi_status_t status;
-		wifi_get_status(&status);
-
-		// The switch, not the worker's state, decides whether the glyph is there
-		// at all: flipping the toggle has to show something immediately, and
-		// bringing the radio up takes a second or two during which the status
-		// still reads OFF.
-		if (!wifi_get_enabled()) {
-			lv_obj_set_hidden(wifi_icon, true);
-		} else {
-			lv_obj_set_hidden(wifi_icon, false);
-
-			if (status.state == WIFI_STATE_CONNECTED) {
-				// Connected: the arc shows the signal strength.
-				const lv_image_dsc_t *glyph = &icon_wifi_max;
-				if (status.bars <= 0) {
-					glyph = &icon_wifi_zero;
-				} else if (status.bars == 1) {
-					glyph = &icon_wifi_low;
-				} else if (status.bars == 2) {
-					glyph = &icon_wifi_high;
-				}
-				lv_image_set_src(wifi_icon, glyph);
-				lv_obj_set_style_image_opa(wifi_icon, LV_OPA_COVER, 0);
-			} else {
-				// On but attached to nothing: the full arc, faded. The empty
-				// glyph is a single dot at this size and reads as a speck of dust
-				// rather than a radio.
-				lv_image_set_src(wifi_icon, &icon_wifi_max);
-				lv_obj_set_style_image_opa(wifi_icon, RADIO_IDLE_OPA, 0);
-			}
-		}
-	}
-
 	if (bt_icon) {
-		// Same rule as the wifi glyph, and it matters more here: bringing the
+		// Bringing the
 		// Bluetooth stack back up takes the best part of ten seconds, and a
 		// status bar that stays empty for all of them looks like the switch did
 		// nothing.
@@ -473,25 +409,6 @@ void topbar_refresh_radios(void) {
 				lv_obj_remove_local_style_prop(bt_icon, LV_STYLE_IMAGE_RECOLOR_OPA, 0);
 			}
 		}
-	}
-
-	// The phone rides the same poll: it is a radio too, and two seconds is soon
-	// enough for something that only changes when someone opens the app.
-	refresh_sonixlink_icon();
-}
-
-// The SonixLink logo: there while a phone has asked for something recently, gone
-// when nothing has. Tied to the traffic and not to the switch, which says only
-// that the player is listening -- the bar reports what is happening, not what is
-// possible.
-static void refresh_sonixlink_icon(void) {
-	if (!sonixlink_icon) {
-		return;
-	}
-	if (sonixlink_is_connected()) {
-		lv_obj_set_hidden(sonixlink_icon, false);
-	} else {
-		lv_obj_set_hidden(sonixlink_icon, true);
 	}
 }
 
@@ -546,24 +463,6 @@ void topbar_refresh_playback(void) {
 
 static void refresh_play_icon(const device_state_t *state) {
 	if (!play_icon) {
-		return;
-	}
-
-	// The AirPlay glyph replaces play/pause rather than sitting beside it. Only
-	// one thing comes out of the DAC, so showing both would claim two, and the
-	// play triangle would be wrong anyway: the local track is stopped while the
-	// phone is the one playing.
-	//
-	// The swap happens only while audio is actually arriving, not as soon as the
-	// receiver is switched on: AirPlay stays enabled on its own (see
-	// quickpanel.c), so enabled and playing are different states and the bar has
-	// to report the second.
-	airplay_state_t ap;
-	airplay_get_state(&ap);
-	if (ap.playing) {
-		lv_image_set_src(play_icon, &icon_airplay_status);
-		lv_obj_remove_local_style_prop(play_icon, LV_STYLE_IMAGE_RECOLOR, 0);
-		lv_obj_set_hidden(play_icon, false);
 		return;
 	}
 
@@ -694,14 +593,8 @@ static void timer_update_cb(lv_timer_t *timer) {
 	// is what nobody is standing over -- the playback colour, Wi-Fi transfer,
 	// DAC mode.
 	led_update_playback(state.status == AUDIO_STATUS_PLAYING, state.stream_sample_rate,
-						!state.live && podcastcache_is_episode(state.current_file),
+						false,
 						!state.live && audio_get_dsd_multiple() > 0);
-	// Wi-Fi transfer takes the same route: its pattern stays lit, screen off
-	// included, for as long as the transfer is on. The switch rather than the
-	// process, because this poll is five seconds apart and the server takes a
-	// moment to come up and to die -- the light would lag the toggle by most of
-	// a poll in both directions.
-	led_set_wifi_transfer(wifitransfer_get_enabled());
 
 	// And Bluetooth receiver mode, which like the transfer is a thing the
 	// player is doing rather than something it is playing: the blue stays on
@@ -763,69 +656,9 @@ static void topbar_refresh_theme(void) {
 	}
 }
 
-// A downward drag starting on the status bar pulls the control panel in, and the
-// panel follows the finger the whole way instead of snapping open the moment the
-// gesture is recognised. A short drag released early falls back out.
-static void topbar_drag_cb(lv_event_t *e) {
-	static lv_point_t start;
-	static bool tracking;
-	static bool engaged;
-
-	lv_indev_t *indev = lv_indev_active();
-	if (!indev) {
-		return;
-	}
-
-	lv_event_code_t code = lv_event_get_code(e);
-	if (code == LV_EVENT_PRESSED) {
-		lv_indev_get_point(indev, &start);
-		// The control centre is reached by dragging this bar down, so this is the
-		// path that has to honour the block. Guarding quickpanel_open() would not
-		// cover it: this handler never calls it, it drives the panel directly
-		// through quickpanel_drag_*().
-		tracking = !quickpanel_is_open() && !quickpanel_blocked();
-		engaged = false;
-		return;
-	}
-	if (!tracking) {
-		return;
-	}
-
-	lv_point_t p;
-	lv_indev_get_point(indev, &p);
-	int dy = p.y - start.y;
-
-	if (code == LV_EVENT_PRESSING) {
-		if (!engaged) {
-			if (dy < 8) {
-				return; // still a press, not a pull
-			}
-			engaged = true;
-			quickpanel_drag_begin();
-		}
-		quickpanel_drag_update(dy);
-		return;
-	}
-
-	if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
-		tracking = false;
-		if (engaged) {
-			engaged = false;
-			quickpanel_drag_end();
-			return;
-		}
-
-		// A flick quick enough to be over between two reads of the touch panel
-		// produces a press and a release with no PRESSING in between, so the
-		// drag above never began and the panel stayed shut -- which from the
-		// outside is a control centre that sometimes ignores a fast swipe. The
-		// gesture did happen: the finger went down on the bar and came up this
-		// far below where it landed.
-		if (dy >= FLICK_OPEN_PX) {
-			quickpanel_open();
-		}
-	}
-}
+// Minimal R1: no control centre. The status bar still exists for volume and
+// battery; a downward drag on it does nothing.
+static void topbar_drag_cb(lv_event_t *e) { (void)e; }
 
 // Nothing inside the bar takes a press; the bar does.
 //
@@ -922,15 +755,6 @@ void topbar_init(gui_config_t *cfg) {
 	lv_obj_add_style(library_icon, &theme_style_icon, 0);
 	lv_obj_set_hidden(library_icon, true);
 
-	// And right of that, the SonixLink logo while a phone is on the other end.
-	// Alongside play/pause rather than in place of it: the phone is driving this
-	// player, not taking the sound away from it, so what the DAC is doing stays
-	// true and this only adds who is asking.
-	sonixlink_icon = lv_image_create(container_left);
-	lv_image_set_src(sonixlink_icon, &icon_sonixlink_status);
-	lv_obj_add_style(sonixlink_icon, &theme_style_icon, 0);
-	lv_obj_set_hidden(sonixlink_icon, true);
-
 	// The right-hand group: radios, charge percentage and battery, packed to the
 	// right edge.
 	container_right = lv_obj_create(top_bar);
@@ -956,69 +780,11 @@ void topbar_init(gui_config_t *cfg) {
 	lv_obj_add_style(bt_icon, &theme_style_icon, 0);
 	lv_obj_set_hidden(bt_icon, true);
 
-	wifi_icon = lv_image_create(container_right);
-	lv_image_set_src(wifi_icon, &icon_wifi_max);
-	lv_obj_add_style(wifi_icon, &theme_style_icon, 0);
-	lv_obj_set_hidden(wifi_icon, true);
-
-	// Charge level as a number, immediately left of the shell.
-	bat_label = lv_label_create(container_right);
-	lv_label_set_text(bat_label, "--%");
-	topbar_set_battery_percent(config_get_int("screen", "battery_percent", 1) != 0);
-	lv_obj_add_style(bat_label, &theme_style_text, 0);
-	lv_obj_set_style_text_font(bat_label, &font_ui_24, 0);
-
-	// The battery indicator is stacked fill first, shell over it, charging bolt
-	// above both. The cavity is sized by scaling both edges and taking the
-	// difference rather than scaling width and height directly: rounding each
-	// independently leaves the fill a pixel short of the bottom of the shell.
-	cavity_x = (BATTERY_CAVITY_X * BATTERY_ICON_SIZE) / 24;
-	cavity_y = (BATTERY_CAVITY_Y * BATTERY_ICON_SIZE) / 24;
-	cavity_w = (((BATTERY_CAVITY_X + BATTERY_CAVITY_W) * BATTERY_ICON_SIZE + 23) / 24) - cavity_x;
-	cavity_h = (((BATTERY_CAVITY_Y + BATTERY_CAVITY_H) * BATTERY_ICON_SIZE + 23) / 24) - cavity_y;
-
-	bat_widget = lv_obj_create(container_right);
-	lv_obj_set_size(bat_widget, BATTERY_ICON_SIZE, BATTERY_ICON_SIZE);
-	lv_obj_set_style_bg_opa(bat_widget, 0, 0);
-	lv_obj_set_style_border_width(bat_widget, 0, 0);
-	lv_obj_set_style_pad_all(bat_widget, 0, 0);
-	lv_obj_set_scrollable(bat_widget, false);
-
-	bat_fill = lv_obj_create(bat_widget);
-	lv_obj_set_pos(bat_fill, cavity_x, cavity_y);
-	lv_obj_set_size(bat_fill, cavity_w, cavity_h);
-	lv_obj_set_style_bg_color(bat_fill, lv_color_make(60, 190, 90), 0);
-	lv_obj_set_style_bg_opa(bat_fill, LV_OPA_COVER, 0);
-	lv_obj_set_style_border_width(bat_fill, 0, 0);
-	lv_obj_set_style_radius(bat_fill, 1, 0);
-	lv_obj_set_style_pad_all(bat_fill, 0, 0);
-	lv_obj_set_scrollable(bat_fill, false);
-
-	bat_shell = lv_image_create(bat_widget);
-	lv_image_set_src(bat_shell, &icon_battery);
-	lv_obj_set_style_image_recolor(bat_shell, theme()->text_primary, 0);
-	lv_obj_set_style_image_recolor_opa(bat_shell, LV_OPA_COVER, 0);
-	lv_obj_set_pos(bat_shell, 0, 0);
-
-	bat_bolt = lv_image_create(bat_widget);
-	lv_image_set_src(bat_bolt, &icon_battery_charging_bolt);
-	lv_obj_set_style_image_recolor(bat_bolt, lv_color_make(245, 205, 60), 0);
-	lv_obj_set_style_image_recolor_opa(bat_bolt, LV_OPA_COVER, 0);
-	lv_obj_set_pos(bat_bolt, 0, 0);
-	lv_obj_set_hidden(bat_bolt, true);
-
-	// Clock, centred on the bar and independent of everything around it.
-	clock_label = clocklabel_create(top_bar, &font_ui_24, 24, &font_ui_14, 14);
-	lv_obj_add_style(clock_label, &theme_style_text, 0);
-	lv_obj_align(clock_label, LV_ALIGN_CENTER, 0, 0);
-	topbar_refresh_clock();
-	topbar_set_clock_position((int)config_get_int("screen", "clock_pos", TOPBAR_CLOCK_CENTER));
-
 	// The tint's two styles, after the theme's so that they win over it; empty
 	// until a tinted page is shown (topbar_tint_on_screen).
 	lv_style_init(&tint_text_style);
 	lv_style_init(&tint_icon_style);
-	lv_obj_t *tinted_icons[] = {vol_icon, hp_icon, play_icon, library_icon, sonixlink_icon, bt_icon, wifi_icon};
+	lv_obj_t *tinted_icons[] = {vol_icon, hp_icon, play_icon, library_icon, bt_icon};
 	for (size_t i = 0; i < sizeof(tinted_icons) / sizeof(tinted_icons[0]); i++) {
 		lv_obj_add_style(tinted_icons[i], &tint_icon_style, 0);
 	}
@@ -1026,11 +792,6 @@ void topbar_init(gui_config_t *cfg) {
 	for (size_t i = 0; i < sizeof(tinted_labels) / sizeof(tinted_labels[0]); i++) {
 		lv_obj_add_style(tinted_labels[i], &tint_text_style, 0);
 	}
-
-	// Ten seconds keeps the minute from ever looking stale and costs nothing.
-	clock_timer = lv_timer_create(clock_timer_cb, 10000, NULL);
-	clock_set_change_hook(clock_changed);
-	power_pause_in_standby(clock_timer); // a clock nobody can see is pure drain
 
 	// The current time is written to the config, and checked against the RTC, so
 	// a device whose RTC does not hold comes back up roughly right instead of at

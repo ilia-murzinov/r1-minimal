@@ -23,10 +23,8 @@
 #include "src/system/library/library.h"
 #include "src/system/library/playlists.h"
 #include "src/system/core/utils.h"
-#include "src/system/streaming/qobuzcache.h"
-#include "src/system/streaming/qobuzsync.h"
-#include "src/system/streaming/tidalcache.h"
-#include "src/system/streaming/tidalsync.h"
+#include "src/gui/nowplaying/removed_features.h"
+
 
 lv_obj_t *playlistpage_screen;
 

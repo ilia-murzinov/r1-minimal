@@ -14,7 +14,6 @@
 #include <strings.h>
 #include <unistd.h>
 
-#include "src/system/library/audiobookdb.h"
 #include "src/system/library/library.h"
 #include "src/system/core/logging.h"
 #include "src/system/bluetooth/btlog.h"
@@ -476,13 +475,14 @@ static bool gadget_rebind(void) {
 // Called right before ADB's init script starts: two gadgets cannot bind at
 // once.
 //
-// A card handed to the host comes back first. With ADB on the card stays with
-// the player (see the watcher), and unbinding under an exported medium left it
-// unmounted here and gone from the host, until the cable was pulled.
+// Stock flips USB mode without asking the Mac to eject: yank the controller
+// first so the host drops the disk, then remount the card here. Remounting
+// while the gadget was still bound raced the host's hold on the block device
+// and left ADB stuck until a polite eject — which is what the 10-tap felt like.
 void usb_gadget_yield_to_adb(void) {
+	gadget_unbind();
 	take_card_back("ADB is starting");
 	owner_changed();
-	gadget_unbind();
 }
 
 // Called after ADB shuts down. Its stop script also unmounts the whole
@@ -706,7 +706,6 @@ static void storage_export(void) {
 	device_state_note_storage_gone();
 	audio_stop();
 	library_close();
-	audiobookdb_close();
 	logging_suspend_for_usb();
 	btlog_card_release();
 
@@ -847,8 +846,6 @@ static void storage_restore(void) {
 	char db_path[512];
 	snprintf(db_path, sizeof(db_path), "%s/.local/library.db", sd_mount);
 	library_open(db_path);
-	snprintf(db_path, sizeof(db_path), "%s/.local/audiobooks.db", sd_mount);
-	audiobookdb_open(db_path);
 	logging_resume_after_usb();
 	btlog_card_attach(sd_mount);
 

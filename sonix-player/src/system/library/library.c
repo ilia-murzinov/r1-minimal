@@ -1,8 +1,6 @@
 #include "library.h"
 
-#include "src/system/library/audiobookdb.h"
 #include "src/system/playback/playlist.h"
-#include "src/system/streaming/podcastdl.h"
 
 #include <ctype.h>
 #include <dirent.h>
@@ -4919,9 +4917,6 @@ static bool walked_subdir(const char *path, const struct dirent *de, int depth, 
 	if (!is_dir) {
 		return false;
 	}
-	if (depth == 0 && (strcasecmp(name, AUDIOBOOKDB_FOLDER) == 0 || strcasecmp(name, PODCASTDL_FOLDER) == 0)) {
-		return false;
-	}
 	return !(depth == 0 && scan_folder_count > 0 && !scan_folder_chosen(name));
 }
 
@@ -5020,12 +5015,6 @@ static void scan_directory(const char *path, int depth) {
 
 		if (S_ISDIR(st.st_mode)) {
 			folder_sig_add(&sig, de->d_name, true);
-			// The audiobooks have an index of their own (audiobookdb.h), and the
-			// downloaded podcasts a page of their own (podcastdl.h).
-			if (depth == 0 && (strcasecmp(de->d_name, AUDIOBOOKDB_FOLDER) == 0 ||
-							   strcasecmp(de->d_name, PODCASTDL_FOLDER) == 0)) {
-				continue;
-			}
 			if (depth == 0 && scan_folder_count > 0 && !scan_folder_chosen(de->d_name)) {
 				continue;
 			}
@@ -5688,10 +5677,6 @@ static void update_folder(const char *path, int depth, walk_t *w) {
 			folder_sig_add(&sig, de->d_name, true);
 			if (dirs_listed && !namelist_add(&dirs, de->d_name)) {
 				dirs_listed = false;
-			}
-			if (depth == 0 && (strcasecmp(de->d_name, AUDIOBOOKDB_FOLDER) == 0 ||
-							   strcasecmp(de->d_name, PODCASTDL_FOLDER) == 0)) {
-				continue;
 			}
 			if (depth == 0 && scan_folder_count > 0 && !scan_folder_chosen(de->d_name)) {
 				continue;

@@ -30,7 +30,8 @@ extern lv_style_t theme_style_text;
 extern lv_style_t theme_style_text_dim;
 extern lv_style_t theme_style_icon;
 extern lv_style_t theme_style_switch;
-extern lv_style_t theme_style_switch_checked; // image_recolor for monochrome icons
+extern lv_style_t theme_style_switch_checked;
+extern lv_style_t theme_style_switch_knob; // contrasting knob (B&W: black on white/grey track)
 
 // A plain accent-coloured fill. Anything that has to follow the accent colour
 // without the page repainting it adds this instead of setting the colour by

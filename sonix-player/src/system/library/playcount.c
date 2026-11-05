@@ -4,7 +4,6 @@
 #include <string.h>
 #include <time.h>
 
-#include "src/system/lastfm/lastfm.h"
 #include "src/system/library/library.h"
 
 // A longer step between two calls than this is the device having been asleep,
@@ -64,7 +63,9 @@ void playcount_note_playback(const playcount_playback_t *now) {
 	play.last_tick = t;
 	play.last_position = now->position;
 
-	if (!play.counted && !play.skip && lastfm_play_counts(now->duration, play.listened)) {
+	// Counts as played: at least 30 s long, and half of it (or 4 minutes) heard.
+	double enough = now->duration / 2 < 240.0 ? now->duration / 2 : 240.0;
+	if (!play.counted && !play.skip && now->duration >= 30.0 && play.listened >= enough) {
 		play.counted = true;
 		library_note_play(play.file);
 	}

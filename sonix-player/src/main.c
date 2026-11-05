@@ -28,7 +28,6 @@
 #include "src/system/playback/sleeptimer.h"
 #include "src/system/audio/usbaudio.h"
 #include "src/system/audio/audio.h"
-#include "src/system/library/audiobookdb.h"
 #include "src/system/bluetooth/bluetooth.h"
 #include "src/system/bluetooth/btlog.h"
 #include "src/system/bluetooth/btplayer.h"
@@ -41,34 +40,17 @@
 #include "src/system/audio/eq.h"
 #include "src/system/audio/headset.h"
 #include "src/system/input/keymap.h"
-#include "src/system/streaming/qobuz.h"
-#include "src/system/streaming/tidal.h"
-#include "src/system/remote/dlna.h"
-#include "src/system/gearboy/gbdb.h"
-#include "src/system/gearboy/gearboy.h"
-#include "src/system/remote/sonixlink.h"
 #include "src/system/core/panel.h"
-#include "src/system/streaming/qobuzcache.h"
-#include "src/system/streaming/podcastcache.h"
-#include "src/system/streaming/podcastsubs.h"
-#include "src/system/streaming/podcaststate.h"
-#include "src/system/streaming/tidalcache.h"
-#include "src/system/streaming/streamkeys.h"
-#include "src/system/lastfm/lastfm.h"
 #include "src/system/library/library.h"
 #include "src/system/core/logging.h"
 #include "src/system/playback/playlist.h"
 #include "src/system/library/playlists.h"
 #include "src/system/device/power.h"
-#include "src/system/streaming/radio.h"
 #include "src/system/device/screenshot.h"
 #include "src/system/device/sysinfo.h"
-#include "src/system/net/tls.h"
 #include "src/system/device/system.h"
 #include "src/system/device/usb.h"
 #include "src/system/core/utils.h"
-#include "src/system/net/webcgi.h"
-#include "src/system/net/wifi.h"
 
 
 static volatile sig_atomic_t running = 1;
@@ -938,7 +920,11 @@ static void install_signal_guards(void) {
 	sigaction(SIGTERM, &term, NULL);
 	sigaction(SIGINT, &term, NULL);
 	sigaction(SIGQUIT, &term, NULL);
-	sigaction(SIGHUP, &term, NULL);
+	// Minimal R1: stopping leftover adbd rebinds UDC and the kernel sends
+	// SIGHUP to the session that held the cable. Treating that as "quit"
+	// left the UI dead and ADB right back on. Ignore hangups; SIGTERM still
+	// stops the player on purpose.
+	signal(SIGHUP, SIG_IGN);
 }
 
 #ifdef HOST_BUILD
@@ -976,7 +962,7 @@ static void install_signal_guards(void) {
 // ---------------------------------------------------------------------------
 
 #define SCROLL_THROW_DECAY_PCT 7
-#define SCROLL_START_LIMIT_PX 4
+#define SCROLL_START_LIMIT_PX 10
 
 // ---------------------------------------------------------------------------
 // A drag is not a tap.
@@ -990,7 +976,7 @@ static void install_signal_guards(void) {
 //
 // The distance is from the press point to the release point; the indev
 // callback is not offered PRESSING, so the path in between is not seen.
-#define TAP_SLOP_PX 12
+#define TAP_SLOP_PX 14
 
 static void tap_guard_cb(lv_event_t *e) {
 	lv_indev_t *indev = lv_indev_active();
@@ -1830,15 +1816,6 @@ static void limit_realtime_share(void) {
 #endif
 
 int main(int argc, char **argv) {
-	// Before anything at all -- before the signal guards, before the allocator
-	// is tuned, before a display is opened. thttpd runs this same binary as the
-	// transfer page's directory listing (see src/system/webcgi.h), and in that
-	// role it is a small program that prints JSON and exits. None of the player
-	// belongs on that path.
-	if (webcgi_should_run(argc, argv)) {
-		return webcgi_main();
-	}
-
 	// On this device dying means rebooting (see above).
 	install_signal_guards();
 
@@ -1905,26 +1882,6 @@ int main(int argc, char **argv) {
 	factoryreset_clear_stock_data(first_start);
 #endif
 
-	// The reader's own file, beside the settings. SONIX_EBOOK_CONFIG moves it for
-	// the host build the same way SONIX_CONFIG moves the other one; with neither
-	// set on the host both stay unset and the reader keeps its state in memory
-	// for the session.
-	const char *ebook_file = getenv("SONIX_EBOOK_CONFIG");
-#ifndef HOST_BUILD
-	if (!ebook_file) {
-		ebook_file = "/usr/data/ebook_config.ini";
-	}
-#endif
-	config_store_init(config_ebook_store(), ebook_file);
-
-	// A player updated in place has its reading positions in the main settings
-	// file. They are moved once, here, and both files are written: leaving them
-	// behind would reset every book on the shelf to its first page.
-	if (config_store_move_section(config_main_store(), config_ebook_store(), "ebook") > 0) {
-		config_store_save(config_ebook_store());
-		config_save();
-	}
-
 	// The interface's own text, before any of it is built. SONIX_LANG_DIR points
 	// it somewhere else for the host build, the same way SONIX_CONFIG does.
 	const char *lang_dir = getenv("SONIX_LANG_DIR");
@@ -1952,14 +1909,6 @@ int main(int argc, char **argv) {
 	// device the framebuffer answers that question itself and this is read for
 	// the update file's name, the converter's name and the serial number.
 	sysinfo_load();
-
-	// The streaming services' application keys, and Qobuz with them. Before
-	// the GUI builds its pages, because the Qobuz page is drawn one way or
-	// the other depending on whether the keys are there.
-	streamkeys_init();
-	qobuz_init();
-	tidal_init();
-	lastfm_init();
 
 	lv_init();
 
@@ -2144,74 +2093,12 @@ int main(int argc, char **argv) {
 		char db_path[600];
 		snprintf(db_path, sizeof(db_path), "%s/.local/library.db", db_root);
 		library_open(db_path);
-		// The same file the app downloads: one index, served as it is.
-		sonixlink_set_db_path(db_path);
-
-		// The thumbnails the player has already made for its own lists: the app
-		// downloads that same file rather than having a second one built for it.
-		char thumbs_path[600];
-		snprintf(thumbs_path, sizeof(thumbs_path), "%s/.local/thumbnails", db_root);
-		sonixlink_set_thumbs_path(thumbs_path);
-
-		// The audiobook index lives beside it, in its own file.
-		snprintf(db_path, sizeof(db_path), "%s/.local/audiobooks.db", db_root);
-		audiobookdb_open(db_path);
-
-		// And the radio's own: the starred stations and the last few played.
-		radio_store_open(db_root);
 	}
 
-	// TLS, so an https:// station can be opened at all. Warmed up here rather
-	// than on first use for two reasons: the first call parses a ~200 KB
-	// certificate bundle, which on this CPU is long enough to be felt if it
-	// happens while a list is being drawn, and the log line it prints says
-	// which bundle was found -- which is the first thing to look at when
-	// https stations fail.
-	tls_set_card_root(gui_cfg.sd_root_path);
-	// Where downloaded stream tracks go. The real card is used -- the same
-	// root the Qobuz page and the card watcher use -- and not
-	// gui_cfg.sd_root_path, which on the simulator is a different folder: the
-	// cache and the code that cleans it must agree on one root.
-	const char *card_root = storage_sd_root();
-	qobuzcache_set_root(card_root && card_root[0] ? card_root : gui_cfg.sd_root_path);
-	tidalcache_set_root(card_root && card_root[0] ? card_root : gui_cfg.sd_root_path);
-	podcastcache_set_root(card_root && card_root[0] ? card_root : gui_cfg.sd_root_path);
-	podcastsubs_set_root(card_root && card_root[0] ? card_root : gui_cfg.sd_root_path);
-	podcaststate_set_root(card_root && card_root[0] ? card_root : gui_cfg.sd_root_path);
-	// And where a track arriving over DLNA lands: same card, same reason.
-	dlna_set_root(card_root && card_root[0] ? card_root : gui_cfg.sd_root_path);
-	// And where the emulator looks for Games/GB and Games/GBC. Unlike the
-	// lines above this uses gui_cfg.sd_root_path and not storage_sd_root():
-	// those write a cache, which belongs on the real card, while games are
-	// the user's own files and live where the user's music lives. On the
-	// device the two are the same (see how gui_cfg is filled in); on the
-	// simulator they are not, which is what makes the page testable without
-	// the device.
-	gbdb_set_root(gui_cfg.sd_root_path);
-
-	// Rows pointing into the stream caches are dropped once at boot: a cache
-	// file may be gone, and starring a streamed track goes to the account
-	// rather than to the local database.
-	library_forget_under(qobuzcache_dir());
-	library_forget_under(tidalcache_dir());
-	if (!tls_available()) {
-		fprintf(stderr, "tls: unavailable; https radio stations cannot be opened\n");
-	}
-
-	// The radios, before the interface: both read their switch out of the
-	// config here, and the Wireless pages are built from those switches, so a
-	// Wi-Fi left on is drawn as on from the first frame. Each starts a worker
-	// and returns at once; if a switch was on, the bring-up happens on that
-	// worker while the interface carries on drawing.
-	wifi_init();
 	// Before the radio, so a bring-up that fails is in the Bluetooth log from
 	// its first line.
 	btlog_init();
 	bluetooth_init();
-	// Its worker starts here but stays idle: no socket is opened until the
-	// switch is on, which the same config read decides.
-	sonixlink_init();
-
 	// The sleep timers, as they were left. Before the interface: the music,
 	// audiobook and podcast pages read their switch and their wheels while
 	// they are built, and read before this they all say off, 0 minutes.

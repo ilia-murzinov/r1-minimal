@@ -99,30 +99,6 @@ void device_state_play_list_ordered(const char *const *list, int count, int star
 // resumed where it was left. Below zero means its beginning.
 void device_state_play_list_ordered_at(const char *const *list, int count, int start_index, double position);
 
-// Before a file starts, someone can say "not yet".
-//
-// This exists for the streaming services. Since the queue holds the whole album
-// rather than only the tracks already downloaded, playback can reach a file
-// that is not there yet. A registered callback receives the path and:
-//
-//   * returns true if it can be played (the file exists, or it is not theirs);
-//   * returns false after taking responsibility for preparing it and restarting
-//     playback once it is ready.
-//
-// Called on the GUI thread and must not block.
-//
-// Several can be registered, which is why this adds rather than sets. With a
-// single slot the second registration would silently displace the first, and a
-// queue would stop waiting for its downloads and skip tracks that have not
-// arrived.
-//
-// All of them are called, in registration order, and the track starts only if
-// all say yes. The first to say no takes charge and the walk stops there: the
-// others have nothing to say about a file that is not theirs, and asking anyway
-// would mean two preparations in flight on the same path.
-typedef bool (*device_state_prepare_cb)(const char *path);
-void device_state_add_prepare_cb(device_state_prepare_cb cb);
-
 // Jump to entry `index` of the current queue.
 bool device_state_play_queue_index(int index);
 

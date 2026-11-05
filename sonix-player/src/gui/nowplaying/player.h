@@ -4,7 +4,6 @@
 #include "src/gui/nowplaying/cover.h"
 #include "src/gui/shell/gui.h"
 #include "src/system/library/library.h"
-#include "src/system/streaming/podcast.h" // podcast_feed_t
 
 #include "lvgl/lvgl.h"
 
@@ -94,14 +93,11 @@ void player_key_next(void);
 void player_key_prev(void);
 
 // What the player's on-screen prev/next buttons do: seconds-sized skips on an
-// audiobook or podcast, previous/next track otherwise. The control centre
 // calls these so that it behaves exactly like the player.
 void player_screen_prev(void);
 void player_screen_next(void);
 
 // The feed of the episode being played, for the control centre's star button.
-// Returns true and fills id/feed when a podcast is playing.
-bool player_current_podcast_feed(long long *id_out, podcast_feed_t *feed_out);
 
 bool player_sheet_is_open(void);
 
@@ -116,6 +112,12 @@ void player_sheet_close(bool animate);
 // direction: true for a surface behind the sheet (drag left to bring it in),
 // false for the sheet itself (drag right to push it away).
 void player_sheet_attach_drag(lv_obj_t *obj, bool opening);
+
+// Bottom-band upward pull that opens Now Playing (same idea as the Musica
+// coverflow edge, but for the player sheet). Tap handlers check
+// player_sheet_edge_up_active() so the tile under the finger is not opened.
+void player_sheet_attach_edge_up(lv_obj_t *obj, gui_config_t *cfg);
+bool player_sheet_edge_up_active(void);
 
 // Boot-time "Remember track": loads the remembered track, paused at position.
 void player_restore_track(const char *filepath, double position);
