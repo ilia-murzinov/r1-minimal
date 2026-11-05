@@ -771,13 +771,60 @@ void topbar_init(gui_config_t *cfg) {
 	lv_obj_set_flex_flow(container_right, LV_FLEX_FLOW_ROW);
 	lv_obj_set_flex_align(container_right, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
-	// The radios come first in the group and so sit leftmost: bluetooth, then
-	// wifi, then the charge percentage and the battery. Both start hidden;
-	// topbar_refresh_radios() decides what is shown.
+	// Bluetooth first (hidden until connected), then charge % and battery shell.
 	bt_icon = lv_image_create(container_right);
 	lv_image_set_src(bt_icon, &icon_bluetooth_status);
 	lv_obj_add_style(bt_icon, &theme_style_icon, 0);
 	lv_obj_set_hidden(bt_icon, true);
+
+	// Charge level as a number, immediately left of the shell.
+	bat_label = lv_label_create(container_right);
+	lv_label_set_text(bat_label, "--%");
+	topbar_set_battery_percent(config_get_int("screen", "battery_percent", 1) != 0);
+	lv_obj_add_style(bat_label, &theme_style_text, 0);
+	lv_obj_set_style_text_font(bat_label, &font_ui_24, 0);
+
+	// Fill under shell under charging bolt. Cavity scaled from the 24×24 SVG.
+	cavity_x = (BATTERY_CAVITY_X * BATTERY_ICON_SIZE) / 24;
+	cavity_y = (BATTERY_CAVITY_Y * BATTERY_ICON_SIZE) / 24;
+	cavity_w = (((BATTERY_CAVITY_X + BATTERY_CAVITY_W) * BATTERY_ICON_SIZE + 23) / 24) - cavity_x;
+	cavity_h = (((BATTERY_CAVITY_Y + BATTERY_CAVITY_H) * BATTERY_ICON_SIZE + 23) / 24) - cavity_y;
+
+	bat_widget = lv_obj_create(container_right);
+	lv_obj_set_size(bat_widget, BATTERY_ICON_SIZE, BATTERY_ICON_SIZE);
+	lv_obj_set_style_bg_opa(bat_widget, 0, 0);
+	lv_obj_set_style_border_width(bat_widget, 0, 0);
+	lv_obj_set_style_pad_all(bat_widget, 0, 0);
+	lv_obj_set_scrollable(bat_widget, false);
+
+	bat_fill = lv_obj_create(bat_widget);
+	lv_obj_set_pos(bat_fill, cavity_x, cavity_y);
+	lv_obj_set_size(bat_fill, cavity_w, cavity_h);
+	lv_obj_set_style_bg_color(bat_fill, lv_color_make(60, 190, 90), 0);
+	lv_obj_set_style_bg_opa(bat_fill, LV_OPA_COVER, 0);
+	lv_obj_set_style_border_width(bat_fill, 0, 0);
+	lv_obj_set_style_radius(bat_fill, 1, 0);
+	lv_obj_set_style_pad_all(bat_fill, 0, 0);
+	lv_obj_set_scrollable(bat_fill, false);
+
+	bat_shell = lv_image_create(bat_widget);
+	lv_image_set_src(bat_shell, &icon_battery);
+	lv_obj_set_style_image_recolor(bat_shell, theme()->text_primary, 0);
+	lv_obj_set_style_image_recolor_opa(bat_shell, LV_OPA_COVER, 0);
+	lv_obj_set_pos(bat_shell, 0, 0);
+
+	bat_bolt = lv_image_create(bat_widget);
+	lv_image_set_src(bat_bolt, &icon_battery_charging_bolt);
+	lv_obj_set_style_image_recolor(bat_bolt, lv_color_make(245, 205, 60), 0);
+	lv_obj_set_style_image_recolor_opa(bat_bolt, LV_OPA_COVER, 0);
+	lv_obj_set_pos(bat_bolt, 0, 0);
+	lv_obj_set_hidden(bat_bolt, true);
+
+	// Clock object kept (tint / refresh paths) but Minimal R1 keeps it hidden.
+	clock_label = clocklabel_create(top_bar, &font_ui_24, 24, &font_ui_14, 14);
+	lv_obj_add_style(clock_label, &theme_style_text, 0);
+	lv_obj_align(clock_label, LV_ALIGN_CENTER, 0, 0);
+	topbar_set_clock_position(TOPBAR_CLOCK_HIDDEN);
 
 	// The tint's two styles, after the theme's so that they win over it; empty
 	// until a tinted page is shown (topbar_tint_on_screen).
