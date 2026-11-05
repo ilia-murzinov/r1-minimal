@@ -791,10 +791,11 @@ static lv_obj_t *make_section(lv_obj_t *container, const char *title, lv_obj_t *
 	return box;
 }
 
-// Stock-style hidden ADB entry: 10 taps on the Bluetooth title.
+// Stock-style hidden ADB entry: 10 taps on the Bluetooth header band.
 // ADB and the USB drive are exclusive (see usb.c).
 #define ADB_TITLE_TAPS 10
 #define ADB_TITLE_TAP_WINDOW_MS 4000
+#define ADB_HEADER_CORNER_SLOTS 3
 
 static int adb_title_taps;
 static uint32_t adb_title_tap_since;
@@ -820,13 +821,32 @@ static void adb_title_tapped_cb(lv_event_t *e) {
 	toast_plain(on ? "ADB on — disk dropped" : "ADB off — USB drive");
 }
 
+// Fat invisible hit over the whole title row (between back chevron and the
+// corner buttons). The label alone is one text line and drops taps.
+static void adb_attach_header_hit(lv_obj_t *screen, gui_config_t *cfg) {
+	int left = cfg->padding + CORNER_BTN_SIZE + 14;
+	int right = cfg->padding + ADB_HEADER_CORNER_SLOTS * (CORNER_BTN_SIZE + 6);
+	int w = cfg->screen_width - left - right;
+	if (w < 40) {
+		w = 40;
+	}
+
+	lv_obj_t *hit = lv_obj_create(screen);
+	lv_obj_remove_style_all(hit);
+	lv_obj_set_size(hit, w, CORNER_BTN_SIZE);
+	lv_obj_set_style_bg_opa(hit, LV_OPA_TRANSP, 0);
+	lv_obj_set_clickable(hit, true);
+	lv_obj_align(hit, LV_ALIGN_TOP_LEFT, left, cfg->padding + cfg->top_bar_height);
+	lv_obj_add_event_cb(hit, adb_title_tapped_cb, LV_EVENT_CLICKED, NULL);
+}
+
 void btsettings_init(gui_config_t *cfg) {
 	lv_obj_t *container = settingsrow_page(btsettings_screen, cfg, "bluetooth");
 	lv_obj_t *title = settingsrow_page_title(btsettings_screen);
-	settingsrow_title_corner_slots(title, cfg, 3);
+	settingsrow_title_corner_slots(title, cfg, ADB_HEADER_CORNER_SLOTS);
 
-	lv_obj_set_clickable(title, true);
-	lv_obj_add_event_cb(title, adb_title_tapped_cb, LV_EVENT_CLICKED, NULL);
+	// Before the corner buttons so those stay on top and keep their own taps.
+	adb_attach_header_hit(btsettings_screen, cfg);
 
 	settingsrow_toggle(container, "bluetooth", &bt_switch, switch_changed_cb);
 	if (bluetooth_get_enabled()) {

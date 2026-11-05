@@ -3,7 +3,7 @@
 ## Locked surface
 
 Home 2×2: NOW/PLAYING · BLUE/TOOTH · ARTISTS · GENRES. No Wi‑Fi / QP / clock.
-USB MSC by default; 10× Bluetooth title toggles ADB.
+USB MSC by default; 10× taps on the Bluetooth header band toggles ADB.
 
 ## Gone from the tree
 
