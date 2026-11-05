@@ -17,10 +17,12 @@ Sleep timer is music-only. LED has no podcast / Wi‑Fi-transfer patterns.
 Also gone (unreachable from home, not compiled, not initialised at startup):
 the whole Settings hub and its pages (music, power, appearance, boot logo,
 screensaver, language, time, key remap, keyboard layouts, music tiles, artist
-exceptions, system, processes, dev options), the EQ / PEQ / MSEB pages, the
+exceptions, system, processes, dev options), the EQ / PEQ / MSEB *pages*, the
 Music grid, the file browser, search, the playlist page and the coverflow. The
 first-boot welcome / language / clock chain is gone too: boot goes straight to
-home. The track menu offers Queue / Show album / Details only.
+home. The track menu offers Queue / Show album / Details only. Audio/BT
+engines are unchanged. Packer R1 image drops Flappy Bird assets and keeps
+English only.
 
 Saved power config (screen timeout, auto-off, standby, charge limit, LEDs,
 key lock) is still applied at boot from the config file, with the defaults the
