@@ -27,28 +27,6 @@
 #include "src/system/device/usb.h"
 #include "src/system/audio/usbdac.h"
 
-// The battery bitmaps are rendered from 24x24 SVGs at this size. The shell is
-// drawn by the icon; the charge level is a plain rectangle behind it, showing
-// through the icon's transparent middle.
-#define BATTERY_ICON_SIZE 38
-
-// The inner cavity of the battery shell, in the SVG's 24x24 coordinates: the
-// body rect runs 2..18 with a 2px stroke centred on it, so the hole is 3..17
-// across and 7..17 down.
-#define BATTERY_CAVITY_X 3
-#define BATTERY_CAVITY_Y 7
-#define BATTERY_CAVITY_W 14
-#define BATTERY_CAVITY_H 10
-
-// The charging shell is the same body with a notch cut top and bottom for the
-// bolt to pass through, so any fill drawn inside it leaks through the openings
-// as a stripe above and below the outline. While charging the level bar is
-// therefore omitted: the bolt says what is happening and the percentage beside
-// it says how far along.
-
-// Below this the fill turns red instead of green.
-#define BATTERY_LOW_PERCENT 15
-
 // Where the volume glyph changes: silent, quiet, loud.
 #define VOLUME_LOW_PERCENT 1
 #define VOLUME_HIGH_PERCENT 55
@@ -81,10 +59,6 @@
 #define OVER_ART_DIM_OPA 148
 
 static lv_obj_t *top_bar;
-static lv_obj_t *bat_widget;
-static lv_obj_t *bat_fill;
-static lv_obj_t *bat_shell;
-static lv_obj_t *bat_bolt;
 static lv_obj_t *bat_label;
 static lv_obj_t *vol_label;
 static lv_obj_t *vol_icon;
@@ -124,25 +98,10 @@ static bool tint_held; // topbar_tint_hold()
 static lv_style_t tint_text_style;
 static lv_style_t tint_icon_style;
 
-// The battery shell's colour: the ink, or the theme's, and quieter when the
-// level is not known.
 // Up over the player's artwork (topbar_set_over_artwork): white on the
 // picture, whatever the theme or the page underneath says.
 static bool over_art;
-
-static lv_color_t shell_color(bool known) {
-	if (over_art) {
-		return known ? lv_color_white() : lv_color_make(200, 200, 200);
-	}
-	if (tint_active) {
-		return known ? tint_ink : lv_color_mix(tint_ink, tint_bg, 140);
-	}
-	return known ? theme()->text_primary : theme()->text_secondary;
-}
 static lv_timer_t *radio_timer;
-
-// Cavity geometry scaled to BATTERY_ICON_SIZE, worked out once at init.
-static int cavity_x, cavity_y, cavity_w, cavity_h;
 
 // Parses the sysfs capacity string. Returns -1 when it is not a number: the
 // host build has no battery and its reader returns "!!".
@@ -158,45 +117,17 @@ static int parse_percent(const char *text) {
 	return value;
 }
 
-// Repaints the battery indicator: level as the width of the coloured bar
-// inside the shell, plus the charging bolt on top when the charger is in.
+// Minimal R1: percent text only (icon/fill/bolt were dropped).
 static void update_battery_indicator(int percent, bool charging) {
-	lv_image_set_src(bat_shell, charging ? &icon_battery_charging_body : &icon_battery);
-
-	if (charging) {
-		lv_obj_set_hidden(bat_bolt, false);
-	} else {
-		lv_obj_set_hidden(bat_bolt, true);
+	(void)charging;
+	if (!bat_label) {
+		return;
 	}
-
 	if (percent < 0) {
-		// Unknown level: empty shell, with nothing to fill in.
-		lv_obj_set_hidden(bat_fill, true);
-		lv_obj_set_style_image_recolor(bat_shell, shell_color(false), 0);
 		lv_label_set_text(bat_label, "--%");
 		return;
 	}
-
 	lv_label_set_text_fmt(bat_label, "%d%%", percent);
-
-	lv_obj_set_style_image_recolor(bat_shell, shell_color(true), 0);
-
-	if (charging) {
-		lv_obj_set_hidden(bat_fill, true);
-		return;
-	}
-
-	lv_obj_set_hidden(bat_fill, false);
-
-	int width = (cavity_w * percent) / 100;
-	if (width < 3 && percent > 0)
-		width = 3; // a nearly flat battery must still read as a red sliver
-
-	lv_obj_set_pos(bat_fill, cavity_x, cavity_y);
-	lv_obj_set_size(bat_fill, width, cavity_h);
-
-	lv_color_t color = (percent <= BATTERY_LOW_PERCENT) ? lv_color_make(220, 60, 50) : lv_color_make(60, 190, 90);
-	lv_obj_set_style_bg_color(bat_fill, color, 0);
 }
 
 // Redraws the clock. Before the time has been set there is nothing truthful to
@@ -777,48 +708,12 @@ void topbar_init(gui_config_t *cfg) {
 	lv_obj_add_style(bt_icon, &theme_style_icon, 0);
 	lv_obj_set_hidden(bt_icon, true);
 
-	// Charge level as a number, immediately left of the shell.
+	// Minimal R1: percent only — no battery shell/bolt glyph.
 	bat_label = lv_label_create(container_right);
 	lv_label_set_text(bat_label, "--%");
 	topbar_set_battery_percent(config_get_int("screen", "battery_percent", 1) != 0);
 	lv_obj_add_style(bat_label, &theme_style_text, 0);
 	lv_obj_set_style_text_font(bat_label, &font_ui_24, 0);
-
-	// Fill under shell under charging bolt. Cavity scaled from the 24×24 SVG.
-	cavity_x = (BATTERY_CAVITY_X * BATTERY_ICON_SIZE) / 24;
-	cavity_y = (BATTERY_CAVITY_Y * BATTERY_ICON_SIZE) / 24;
-	cavity_w = (((BATTERY_CAVITY_X + BATTERY_CAVITY_W) * BATTERY_ICON_SIZE + 23) / 24) - cavity_x;
-	cavity_h = (((BATTERY_CAVITY_Y + BATTERY_CAVITY_H) * BATTERY_ICON_SIZE + 23) / 24) - cavity_y;
-
-	bat_widget = lv_obj_create(container_right);
-	lv_obj_set_size(bat_widget, BATTERY_ICON_SIZE, BATTERY_ICON_SIZE);
-	lv_obj_set_style_bg_opa(bat_widget, 0, 0);
-	lv_obj_set_style_border_width(bat_widget, 0, 0);
-	lv_obj_set_style_pad_all(bat_widget, 0, 0);
-	lv_obj_set_scrollable(bat_widget, false);
-
-	bat_fill = lv_obj_create(bat_widget);
-	lv_obj_set_pos(bat_fill, cavity_x, cavity_y);
-	lv_obj_set_size(bat_fill, cavity_w, cavity_h);
-	lv_obj_set_style_bg_color(bat_fill, lv_color_make(60, 190, 90), 0);
-	lv_obj_set_style_bg_opa(bat_fill, LV_OPA_COVER, 0);
-	lv_obj_set_style_border_width(bat_fill, 0, 0);
-	lv_obj_set_style_radius(bat_fill, 1, 0);
-	lv_obj_set_style_pad_all(bat_fill, 0, 0);
-	lv_obj_set_scrollable(bat_fill, false);
-
-	bat_shell = lv_image_create(bat_widget);
-	lv_image_set_src(bat_shell, &icon_battery);
-	lv_obj_set_style_image_recolor(bat_shell, theme()->text_primary, 0);
-	lv_obj_set_style_image_recolor_opa(bat_shell, LV_OPA_COVER, 0);
-	lv_obj_set_pos(bat_shell, 0, 0);
-
-	bat_bolt = lv_image_create(bat_widget);
-	lv_image_set_src(bat_bolt, &icon_battery_charging_bolt);
-	lv_obj_set_style_image_recolor(bat_bolt, lv_color_make(245, 205, 60), 0);
-	lv_obj_set_style_image_recolor_opa(bat_bolt, LV_OPA_COVER, 0);
-	lv_obj_set_pos(bat_bolt, 0, 0);
-	lv_obj_set_hidden(bat_bolt, true);
 
 	// Clock object kept (tint / refresh paths) but Minimal R1 keeps it hidden.
 	clock_label = clocklabel_create(top_bar, &font_ui_24, 24, &font_ui_14, 14);
@@ -928,10 +823,7 @@ static void tint_apply(void) {
 	lv_obj_report_style_change(&tint_text_style);
 	lv_obj_report_style_change(&tint_icon_style);
 
-	// The shell carries its colour on itself; it is painted now, and the next
-	// poll paints the whole indicator again.
-	lv_obj_set_style_image_recolor(bat_shell, shell_color(last_battery_percent >= 0), 0);
-	last_battery_percent = -2;
+	last_battery_percent = -2; // next poll repaints the percent label
 }
 
 // The blur and the dimming behind the bar, or neither.
@@ -973,7 +865,6 @@ void topbar_set_over_artwork(bool on, bool blur) {
 	} else {
 		return;
 	}
-	lv_obj_set_style_image_recolor(bat_shell, shell_color(last_battery_percent >= 0), 0);
 	last_battery_percent = -2;
 }
 
