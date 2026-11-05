@@ -43,6 +43,12 @@ static void rescan_long_cb(lv_event_t *e) {
 		return;
 	}
 	(void)e;
+	// LVGL still fires CLICKED on the lift after LONG_PRESSED; wait_release
+	// eats that so Artists/Genres do not open under the folder picker.
+	lv_indev_t *indev = lv_indev_active();
+	if (indev) {
+		lv_indev_wait_release(indev);
+	}
 	open_library_scan();
 }
 
