@@ -2154,11 +2154,6 @@ int main(int argc, char **argv) {
 	// walk cannot wander off it.
 	playlist_set_card_root(gui_cfg.sd_root_path);
 
-	// MSEB presets: one small file each in <card>/.local/MSEB.
-	mseb_presets_set_dir(gui_cfg.sd_root_path);
-	eq_presets_set_dir(gui_cfg.sd_root_path);
-	peq_presets_set_dir(gui_cfg.sd_root_path);
-
 	// The music index, beside the thumbnails. Same schema as the stock
 	// player's, so the two can read each other's database.
 	if (gui_cfg.sd_root_path && gui_cfg.sd_root_path[0]) {

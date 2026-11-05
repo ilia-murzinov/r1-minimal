@@ -20,17 +20,22 @@
 #include "src/gui/shell/toast.h"
 #include "src/gui/shell/topbar.h"
 #include "src/system/bluetooth/bluetooth.h"
+#include "src/system/core/config.h"
 #include "src/system/core/lang.h"
 #include "src/system/device/adb.h"
+#include "src/system/device/power.h"
 
 lv_obj_t *btsettings_screen;
 
 #define BT_PAGE_POLL_MS 500
 #define BT_ROW_H 76
 #define CORNER_BTN_SIZE 56
+#define BRIGHTNESS_FLOOR 1
 
 static lv_obj_t *bt_switch;
 static lv_obj_t *adb_switch;
+static lv_obj_t *brightness_slider;
+static lv_obj_t *brightness_value;
 static lv_obj_t *status_label;
 static lv_obj_t *paired_label;
 static lv_obj_t *paired_list;
@@ -719,6 +724,53 @@ static void switched_elsewhere_cb(lv_event_t *e) {
 	}
 }
 
+static void brightness_show_value(long value, long max) {
+	if (!brightness_value || max <= 0) {
+		return;
+	}
+	lv_label_set_text_fmt(brightness_value, "%d%%", (int)((value * 100 + max / 2) / max));
+}
+
+// Live while dragging: the panel follows the finger.
+static void brightness_changed_cb(lv_event_t *e) {
+	(void)e;
+	if (!brightness_slider) {
+		return;
+	}
+	long value = lv_slider_get_value(brightness_slider);
+	power_set_brightness(value);
+	brightness_show_value(value, lv_slider_get_max_value(brightness_slider));
+}
+
+// Persist once on lift — not on every drag pixel.
+static void brightness_released_cb(lv_event_t *e) {
+	(void)e;
+	if (!brightness_slider) {
+		return;
+	}
+	config_set_int("screen", "brightness", (int)lv_slider_get_value(brightness_slider));
+	config_save();
+}
+
+// Max brightness is only known after power_init(); sync range each visit.
+static void sync_brightness_slider(void) {
+	if (!brightness_slider) {
+		return;
+	}
+	long max = power_get_max_brightness();
+	if (max <= 0) {
+		max = 100;
+	}
+	lv_slider_set_range(brightness_slider, BRIGHTNESS_FLOOR, (int32_t)max);
+
+	long value = power_get_brightness();
+	if (value < BRIGHTNESS_FLOOR) {
+		value = max;
+	}
+	lv_slider_set_value(brightness_slider, (int32_t)value, LV_ANIM_OFF);
+	brightness_show_value(value, max);
+}
+
 static void screen_loaded_cb(lv_event_t *e) {
 	(void)e;
 	drawn_serial = 0xFFFFFFFFu;
@@ -726,6 +778,7 @@ static void screen_loaded_cb(lv_event_t *e) {
 	lv_timer_ready(poll_timer);
 	bluetooth_refresh();
 	sync_adb_switch();
+	sync_brightness_slider();
 	// Visible to other devices only from here. Searching and being searched for
 	// are the two halves of the same page: without this a phone looking for the
 	// player finds nothing, whatever it does.
@@ -822,6 +875,51 @@ void btsettings_init(gui_config_t *cfg) {
 	lv_obj_t *container = settingsrow_page(btsettings_screen, cfg, "settings");
 	lv_obj_t *title = settingsrow_page_title(btsettings_screen);
 	settingsrow_title_corner_slots(title, cfg, SETTINGS_HEADER_CORNER_SLOTS);
+
+	// Brightness: continuous backlight bar (same behaviour as the old Screen page).
+	lv_obj_t *bright_card = lv_obj_create(container);
+	lv_obj_set_width(bright_card, lv_pct(100));
+	lv_obj_set_height(bright_card, 140);
+	lv_obj_add_style(bright_card, &theme_style_card, 0);
+	lv_obj_set_style_radius(bright_card, 20, 0);
+	lv_obj_set_style_border_width(bright_card, 0, 0);
+	lv_obj_set_style_shadow_width(bright_card, 0, 0);
+	lv_obj_set_style_pad_hor(bright_card, 20, 0);
+	lv_obj_set_style_pad_ver(bright_card, 14, 0);
+	lv_obj_set_scrollable(bright_card, false);
+	lv_obj_set_event_bubble(bright_card, true);
+
+	lv_obj_t *bright_label = lv_label_create(bright_card);
+	lv_label_set_text(bright_label, tr("brightness"));
+	lv_obj_add_style(bright_label, &theme_style_text, 0);
+	lv_obj_set_style_text_font(bright_label, &font_ui_24, 0);
+	lv_obj_align(bright_label, LV_ALIGN_TOP_LEFT, 0, 0);
+
+	brightness_value = lv_label_create(bright_card);
+	lv_obj_add_style(brightness_value, &theme_style_text_dim, 0);
+	lv_obj_set_style_text_font(brightness_value, &font_ui_24, 0);
+	lv_obj_align(brightness_value, LV_ALIGN_TOP_RIGHT, 0, 0);
+	lv_label_set_text(brightness_value, "");
+
+	brightness_slider = lv_slider_create(bright_card);
+	lv_obj_set_width(brightness_slider, lv_pct(100));
+	lv_obj_set_height(brightness_slider, 10);
+	lv_obj_align(brightness_slider, LV_ALIGN_BOTTOM_MID, 0, -14);
+	lv_slider_set_range(brightness_slider, BRIGHTNESS_FLOOR, 100);
+	lv_obj_add_style(brightness_slider, &theme_style_slider_track, LV_PART_MAIN);
+	lv_obj_set_style_radius(brightness_slider, LV_RADIUS_CIRCLE, LV_PART_INDICATOR);
+	lv_obj_add_style(brightness_slider, &theme_style_accent_bg, LV_PART_INDICATOR);
+	lv_obj_set_style_radius(brightness_slider, LV_RADIUS_CIRCLE, LV_PART_KNOB);
+	lv_obj_set_style_bg_color(brightness_slider, lv_color_white(), LV_PART_KNOB);
+	theme_apply_slider_knob(brightness_slider);
+	lv_obj_set_style_pad_all(brightness_slider, 8, LV_PART_KNOB);
+	lv_obj_set_style_shadow_width(brightness_slider, 8, LV_PART_KNOB);
+	lv_obj_set_style_shadow_opa(brightness_slider, LV_OPA_30, LV_PART_KNOB);
+	lv_obj_set_style_shadow_color(brightness_slider, lv_color_black(), LV_PART_KNOB);
+	lv_obj_set_style_shadow_offset_y(brightness_slider, 1, LV_PART_KNOB);
+	lv_obj_set_ext_click_area(brightness_slider, 24);
+	lv_obj_add_event_cb(brightness_slider, brightness_changed_cb, LV_EVENT_VALUE_CHANGED, NULL);
+	lv_obj_add_event_cb(brightness_slider, brightness_released_cb, LV_EVENT_RELEASED, NULL);
 
 	settingsrow_heading(container, "bluetooth");
 	settingsrow_toggle(container, "bluetooth", &bt_switch, switch_changed_cb);

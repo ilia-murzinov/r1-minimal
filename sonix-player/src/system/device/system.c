@@ -831,9 +831,6 @@ static void card_databases_attach(const char *root) {
 	// artwork cache end up pointing at nothing.
 	playlists_init(root);
 	cover_set_cache_dir(root);
-	eq_presets_set_dir(root);
-	peq_presets_set_dir(root);
-	mseb_presets_set_dir(root);
 
 	// The log, from the setting rather than from a remembered flag: a flag does
 	// not survive two remove events, and a failed reopen consumes it for good.

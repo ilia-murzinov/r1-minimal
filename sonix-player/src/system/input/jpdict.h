@@ -4,10 +4,8 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-// Hiragana to kanji candidates, with no LVGL and no allocation, so it can be
-// tested on a PC like kana.c. The dictionary is the default one of
-// lv_ime_jp_lite (see jpdict_data.c), kept in flash as plain const arrays made by
-// tools/gen_jpdict.py: nothing is built at start-up and no RAM is used.
+// Hiragana to kanji candidates. Minimal R1 ships stubs (no dictionary); the
+// API stays so the keyboard can keep its Japanese layout for kana only.
 //
 // It is a reading-to-kanji list, not a sentence converter: it answers for the
 // whole reading it is given, not for the best split of a longer text.

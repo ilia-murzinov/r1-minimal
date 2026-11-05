@@ -15,14 +15,14 @@ Home is four tiles:
 | | |
 |---|---|
 | **NOW PLAYING** | transport, queue, track details |
-| **SETTINGS** | Bluetooth + USB; **ADB** pinned at the bottom (MSC by default) |
+| **SETTINGS** | Brightness, Bluetooth + USB; **ADB** pinned at the bottom (MSC by default) |
 | **ARTISTS** | artist → album → song |
 | **GENRES** | genre → artist → album → song (albums are the artist’s full set) |
 
 Empty library: tap Artists or Genres to scan; long-press either to rescan.
 
-Charge stops at the stock **80%** limit (AXP REG64 ≈ 4.20 V). Audio and
-Bluetooth engines are upstream Sonix, unchanged.
+Charge stops at the stock **80%** limit (AXP REG64 ≈ 4.20 V). Bluetooth and
+decode are upstream Sonix; graphic EQ / PEQ / MSEB are removed.
 
 Gone: streaming, Wi‑Fi / AirPlay / DLNA, Settings hub (EQ, themes, language,
 screensaver, …), browser, search, playlists UI, coverflow, games, ebooks.

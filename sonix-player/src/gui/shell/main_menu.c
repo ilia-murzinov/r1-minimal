@@ -17,10 +17,22 @@
 lv_obj_t *main_menu_screen;
 
 // Minimal home has no Settings → Library path. Empty DB: tap Artists/Genres
-// opens the scan flow; long-press either tile rescans anytime.
-static void open_library_scan(void) { libraryscan_choose_folders(); }
+// opens the scan flow; long-press either tile rescans anytime. While USB MSC
+// owns the card (or there is no card), track count looks empty — toast instead
+// of the folder picker.
+static void open_library_scan(void) {
+	if (!gui_card_available()) {
+		gui_notify_no_card();
+		return;
+	}
+	libraryscan_choose_folders();
+}
 
 static void open_artists(void) {
+	if (!gui_card_available()) {
+		gui_notify_no_card();
+		return;
+	}
 	if (library_track_count() == 0) {
 		open_library_scan();
 		return;
@@ -29,6 +41,10 @@ static void open_artists(void) {
 }
 
 static void open_genres(void) {
+	if (!gui_card_available()) {
+		gui_notify_no_card();
+		return;
+	}
 	if (library_track_count() == 0) {
 		open_library_scan();
 		return;

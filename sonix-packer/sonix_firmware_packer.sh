@@ -74,7 +74,6 @@ KERNEL_DIR="$SCRIPT_DIR/kernel"
 # file the overlay actually landed, which is what stops an R1 image being built
 # with the R3 Pro II's name in it and offering that model's updates.
 MODELS=(
-	"R3PII|r3proii_original.upt|r3proii.upt|HiBy R3 Pro II"
 	"R1|r1_original.upt|r1.upt|HiBy R1"
 )
 
