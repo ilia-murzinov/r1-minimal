@@ -269,9 +269,13 @@ void powermenu_init(gui_config_t *cfg) {
 	lv_obj_set_flex_flow(pills, LV_FLEX_FLOW_COLUMN);
 	lv_obj_set_flex_align(pills, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
-	// B&W minimal: both slides use white glyphs; the labels name the action.
-	make_slide(pills, &slide_off, &icon_power_off, lv_color_white(), "powermenu_slide_to_power_off", do_power_off);
-	make_slide(pills, &slide_reboot, &icon_reboot, lv_color_white(), "powermenu_slide_to_restart", do_reboot);
+	// B&W minimal: white knob discs need dark glyphs (white-on-white vanished).
+	// The labels still name the action.
+	lv_color_t knob_ink = lv_color_hex(0x1A1A1A);
+	make_slide(pills, &slide_off, &icon_power_off, knob_ink, "powermenu_slide_to_power_off",
+			   do_power_off);
+	make_slide(pills, &slide_reboot, &icon_reboot, knob_ink, "powermenu_slide_to_restart",
+			   do_reboot);
 
 	// Cancel: white disc; pressed = solid white (no red flash).
 	lv_obj_t *cancel = lv_btn_create(panel);

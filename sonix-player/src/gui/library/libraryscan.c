@@ -597,8 +597,10 @@ void libraryscan_init(gui_config_t *cfg) {
 	lv_obj_set_style_text_font(status_label, &font_ui_26, 0);
 
 	// The two buttons share the foot of the page: cancel while the scan runs, OK
-	// once it is done.
-	cancel_button = make_button(libraryscan_screen, "cancel", lv_color_make(210, 66, 58), cancel_cb, cfg);
+	// once it is done. Cancel used to be Adwaita red; keep it greyscale with the
+	// rest of the B&W shell (pressed surface + dark ink via ink_on).
+	cancel_button =
+		make_button(libraryscan_screen, "cancel", theme()->surface_pressed, cancel_cb, cfg);
 	ok_button = make_button(libraryscan_screen, "ok", theme()->accent, ok_cb, cfg);
 	lv_obj_set_hidden(ok_button, true);
 
