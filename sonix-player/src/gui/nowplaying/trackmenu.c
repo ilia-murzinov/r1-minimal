@@ -30,8 +30,6 @@
 #include "src/system/core/utils.h"
 #include "src/system/device/system.h"
 #include "lvgl/src/core/lv_obj_scroll_private.h"
-#include "src/gui/nowplaying/removed_features.h"
-
 
 lv_obj_t *queue_screen;
 lv_obj_t *details_screen;
@@ -1493,11 +1491,8 @@ static void details_fill(const char *file, const song_metadata_t *tags, int bits
 		details_add_row("trackmenu_format", buffer);
 	}
 
-	// A separate bitrate row, only for local lossless tracks: size over
-	// duration, which is how dense the file is. Lossy files already carry it in
-	// the row above, and for a streamed track the cache file may be half
-	// downloaded, making the number meaningless.
-	if (!lossy && !qobuzcache_owns(file) && !tidalcache_owns(file) && duration_secs > 0.5) {
+	// Bitrate from size/duration for local lossless (lossy already has a row).
+	if (!lossy && duration_secs > 0.5) {
 		struct stat st_kbps;
 		if (stat(file, &st_kbps) == 0 && st_kbps.st_size > 0) {
 			int avg = (int)((double)st_kbps.st_size * 8.0 / duration_secs / 1000.0 + 0.5);
@@ -1523,25 +1518,13 @@ static void details_fill(const char *file, const song_metadata_t *tags, int bits
 		}
 	}
 
-	// No size row for a streamed track: it would be the size of the cache file,
-	// which may still be downloading -- a number that grows on screen by itself
-	// and describes the download, not the track.
 	struct stat st;
-	if (!qobuzcache_owns(file) && !tidalcache_owns(file) && stat(file, &st) == 0) {
+	if (stat(file, &st) == 0) {
 		snprintf(buffer, sizeof(buffer), "%.1f MB", st.st_size / (1024.0 * 1024.0));
 		details_add_row("trackmenu_size", buffer);
 	}
 
-	// The path, except for a streamed track: that lives in a cache directory
-	// nobody chose, under a numeric name, and showing it implies a file of the
-	// user's own that does not exist. The source service is shown instead.
-	if (qobuzcache_owns(file)) {
-		details_add_row("trackmenu_source", "qobuz");
-	} else if (tidalcache_owns(file)) {
-		details_add_row("trackmenu_source", "tidal");
-	} else {
-		details_add_row("trackmenu_file", details_card_path(file));
-	}
+	details_add_row("trackmenu_file", details_card_path(file));
 }
 
 static void details_rebuild(void) {
@@ -1604,11 +1587,7 @@ static void details_rebuild(void) {
 	bool lossy = audio_stream_is_lossy();
 	int kbps = audio_get_stream_bitrate_kbps();
 
-	// As in the player: when the file declares no bitrate, fall back to the real
-	// average, but only for a local file -- a streamed one may still be half
-	// downloaded and the number would climb by itself.
-	if (lossy && kbps <= 0 && !qobuzcache_owns(state.current_file) && !tidalcache_owns(state.current_file) &&
-		state.progress_total_secs > 0.5) {
+	if (lossy && kbps <= 0 && state.progress_total_secs > 0.5) {
 		struct stat st_lossy;
 		if (stat(state.current_file, &st_lossy) == 0 && st_lossy.st_size > 0) {
 			kbps = (int)((double)st_lossy.st_size * 8.0 / state.progress_total_secs / 1000.0 + 0.5);
@@ -1683,9 +1662,6 @@ static void open_queue_cb(void *user) {
 	trackmenu_open_queue();
 }
 
-// The same page without going through the menu: the player calls this when a
-// podcast is playing, where the overflow button becomes the episodes button --
-// and a podcast's episodes are exactly the queue.
 void trackmenu_open_queue(void) {
 	player_sheet_close(false);
 	switch_screen(queue_screen);
@@ -1725,62 +1701,6 @@ static void open_album_cb(void *user) {
 		return;
 	}
 
-	// Podcasts come first, because there is no album to show: the other episodes
-	// are what is wanted. The feed id was kept by the sidecar file when the
-	// episode was downloaded; the "album" title alone would not do, because two
-	// podcasts can share a name and the catalogue is queried by id.
-	long long feed_id = 0;
-	if (podcastcache_feed_id(state.current_file, &feed_id)) {
-		device_state_t now;
-		device_state_get(&now);
-		player_sheet_close(false);
-		if (!podcastpage_open_feed(feed_id, now.metadata.album)) {
-			gui_notify_popup("trackmenu_podcast_failed");
-			return;
-		}
-		switcher_set_player_return(podcastcard_feed_screen);
-		return;
-	}
-
-	// A Qobuz track is not in the local library, so its album is not looked up
-	// in the database: it is reopened on Qobuz, using the id the sidecar file
-	// kept when the track was downloaded.
-	char qobuz_album[40];
-	if (qobuzcache_album_id(state.current_file, qobuz_album, sizeof(qobuz_album))) {
-		char title[256];
-		if (!library_track_album(state.current_file, title, sizeof(title)) || !title[0]) {
-			device_state_t now;
-			device_state_get(&now);
-			snprintf(title, sizeof(title), "%s", now.metadata.album);
-		}
-		player_sheet_close(false);
-		if (!qobuzpage_open_album(qobuz_album, title)) {
-			gui_notify_popup("trackmenu_qobuz_album_failed");
-			return;
-		}
-		switcher_set_player_return(qobuz_list_screen);
-		return;
-	}
-
-	// Same for Tidal, for the same reason: a streamed track's album is reopened
-	// on the service it came from, not in the local database, where it is not.
-	char tidal_album[40];
-	if (tidalcache_album_id(state.current_file, tidal_album, sizeof(tidal_album))) {
-		char title[256];
-		if (!library_track_album(state.current_file, title, sizeof(title)) || !title[0]) {
-			device_state_t now;
-			device_state_get(&now);
-			snprintf(title, sizeof(title), "%s", now.metadata.album);
-		}
-		player_sheet_close(false);
-		if (!tidalpage_open_album(tidal_album, title)) {
-			gui_notify_popup("trackmenu_tidal_album_failed");
-			return;
-		}
-		switcher_set_player_return(tidal_list_screen);
-		return;
-	}
-
 	char album[256];
 	if (!library_track_album_value(state.current_file, album, sizeof(album)) || !album[0]) {
 		gui_notify_popup("trackmenu_no_album");
@@ -1815,16 +1735,6 @@ void trackmenu_details_open(const char *path) {
 }
 
 void trackmenu_open(lv_obj_t *anchor) {
-	// Two tables rather than one with the label patched at runtime, because of
-	// the string-extraction tool: it reads popover_item_t initialisers (see
-	// LABEL_STRUCTS in tools/extract_strings.py), not assignments. A
-	// "trackmenu_show_podcast" written with an equals sign would never reach the
-	// language files and would stay untranslated everywhere.
-	//
-	// The action behind both is the same: open_album_cb inspects where the
-	// playing file came from and decides for itself. Only the wording differs,
-	// because a podcast episode has no album and calling it one would be a
-	// borrowed term to make a menu line up.
 	static const popover_item_t ITEMS[] = {
 		{"trackmenu_queue", open_queue_cb, NULL},
 		{"add_to_playlist", add_to_playlist_cb, NULL},
@@ -1832,19 +1742,7 @@ void trackmenu_open(lv_obj_t *anchor) {
 		{"details", open_details_cb, NULL},
 		{"settings", open_settings_cb, NULL},
 	};
-	static const popover_item_t ITEMS_PODCAST[] = {
-		{"trackmenu_queue", open_queue_cb, NULL},
-		{"add_to_playlist", add_to_playlist_cb, NULL},
-		{"trackmenu_show_podcast", open_album_cb, NULL},
-		{"details", open_details_cb, NULL},
-		{"settings", open_settings_cb, NULL},
-	};
-
-	device_state_t state;
-	device_state_get(&state);
-	bool podcast = state.current_file[0] && podcastcache_is_episode(state.current_file);
-
-	popover_show(anchor, podcast ? ITEMS_PODCAST : ITEMS, 5);
+	popover_show(anchor, ITEMS, 5);
 }
 
 void trackmenu_init(gui_config_t *cfg) {

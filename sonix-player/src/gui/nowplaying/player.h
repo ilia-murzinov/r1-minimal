@@ -29,7 +29,7 @@ void player_lyrics_reload(const char *path);
 
 // The "4/12" under the progress bar: the place in the queue as the screen shows
 // it (the deal's order under shuffle) and the length. False, with both zero,
-// where the screen shows nothing -- one track, a book, DLNA, a stream.
+// where the screen shows nothing -- one track.
 bool player_queue_position(int *position, int *count);
 
 // ---------------------------------------------------------------------------
@@ -92,12 +92,9 @@ void player_key_play_pause(void);
 void player_key_next(void);
 void player_key_prev(void);
 
-// What the player's on-screen prev/next buttons do: seconds-sized skips on an
-// calls these so that it behaves exactly like the player.
+// What the player's on-screen prev/next buttons do.
 void player_screen_prev(void);
 void player_screen_next(void);
-
-// The feed of the episode being played, for the control centre's star button.
 
 bool player_sheet_is_open(void);
 

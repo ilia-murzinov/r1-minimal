@@ -20,8 +20,6 @@
 #include "src/system/image/png_scaled.h"
 #include "src/system/image/stb_image_decl.h"
 #include "src/system/core/utils.h"
-#include "src/gui/nowplaying/removed_features.h"
-
 // The backdrop is blurred at half resolution and stretched back up. Blurring
 // the small copy (rather than relying on the stretch alone) is what keeps it
 // smooth: a plain upscale of a heavily shrunk image shows the interpolation
@@ -1675,16 +1673,6 @@ bool cover_load_player_images(const char *filepath, int cover_w, int cover_h, co
 
 	int used = -1;
 	cover_build_t built = build_from_sources_at(filepath, false, reqs, n, results, &used, NULL);
-	if (built == COVER_BUILD_NONE) {
-		// A podcast episode with no cover file beside it: fetch it now, on the
-		// loader thread, which can afford to wait on a network request, then
-		// try again. This covers episodes started from the queue, whose tags
-		// carry the cover URL but whose jpg was never downloaded.
-		if (!podcastcache_ensure_cover(filepath)) {
-			return false;
-		}
-		built = build_from_sources_at(filepath, false, reqs, n, results, &used, NULL);
-	}
 	bool ok = (built == COVER_BUILD_OK);
 
 	// Kept only when the picture came from the source the id was taken from:

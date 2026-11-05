@@ -10,7 +10,6 @@
 
 #include "src/gui/library/browser.h"
 #include "src/gui/nowplaying/coverflow.h"
-#include "src/gui/nowplaying/chapters.h"
 #include "src/gui/bluetooth/airpodspage.h"
 #include "src/gui/settings/appearance.h"
 #include "src/gui/bluetooth/btaudio.h"
@@ -570,7 +569,6 @@ void gui_init(gui_config_t *cfg) {
 	medialist_screen = lv_obj_create(NULL);
 	medialist_tracks_screen = lv_obj_create(NULL);
 	medialist_albums_screen = lv_obj_create(NULL);
-	chapters_screen = lv_obj_create(NULL);
 	queue_screen = lv_obj_create(NULL);
 	details_screen = lv_obj_create(NULL);
 	btsettings_screen = lv_obj_create(NULL);
@@ -629,7 +627,6 @@ void gui_init(gui_config_t *cfg) {
 	search_init(cfg);
 	medialist_init(cfg);
 	playlistpage_init(cfg);
-	chapters_init(cfg);
 	trackmenu_init(cfg);
 
 	// The leftward swipe that pulls the player in: browsing pages only.
@@ -647,7 +644,7 @@ void gui_init(gui_config_t *cfg) {
 		devoptions_screen, processespage_screen, musicsettings_screen, powersettings_screen, appearance_screen,
 		language_screen,
 		medialist_screen, medialist_tracks_screen, medialist_albums_screen,
-		queue_screen, chapters_screen, details_screen,
+		queue_screen, details_screen,
 		btsettings_screen, btaudio_screen, airpodspage_screen,
 	};
 	for (size_t i = 0; i < sizeof(back_swipe_screens) / sizeof(back_swipe_screens[0]); i++) {

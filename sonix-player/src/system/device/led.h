@@ -65,24 +65,15 @@ void led_set_charging(bool charging);
 void led_set_on_charger(bool present);
 
 // Picks the pattern for what is playing (shown when not charging). `playing`
-// false or rate 0 falls back to the idle aqua. `podcast` true paints the
-// purple (pattern 10) instead of the sample-rate colour, and `dsd` true the
-// white (pattern 11): a DSD file goes to the DAC over DoP, at a PCM carrier
-// rate of 176.4 kHz and up that would otherwise read as hi-res PCM. Cheap to
-// call repeatedly: only writes on change.
-void led_update_playback(bool playing, int sample_rate, bool podcast, bool dsd);
+// false or rate 0 falls back to the idle aqua. `dsd` true paints white
+// (pattern 11): a DSD file goes to the DAC over DoP, at a PCM carrier rate
+// that would otherwise read as hi-res PCM. Cheap to call repeatedly: only
+// writes on change.
+void led_update_playback(bool playing, int sample_rate, bool dsd);
 
-// Wi-Fi transfer active: pattern 12 (a register added by hand to the driver
-// script). Stays lit with the screen off, since it indicates the server is
-// running, and overrides the darken-in-standby option.
-void led_set_wifi_transfer(bool active);
-
-// Bluetooth receiver mode: pattern 14, blue at full brightness (another
-// register added by hand to the driver script). Same argument as the transfer
-// above, and the same exemption from the standby option -- nothing plays
-// through audio.c in that mode, so led_update_playback() reads a stopped
-// player, and the LED went out twenty seconds after the screen did with a
-// computer still sending music into the jack.
+// Bluetooth receiver mode: pattern 14, blue at full brightness. Exemption from
+// the standby option -- nothing plays through audio.c in that mode, so
+// led_update_playback() reads a stopped player.
 void led_set_bt_receiver(bool active);
 
 // DAC mode. Nothing plays through audio.c there, so led_update_playback() sees

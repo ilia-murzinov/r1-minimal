@@ -593,7 +593,6 @@ static void timer_update_cb(lv_timer_t *timer) {
 	// is what nobody is standing over -- the playback colour, Wi-Fi transfer,
 	// DAC mode.
 	led_update_playback(state.status == AUDIO_STATUS_PLAYING, state.stream_sample_rate,
-						false,
 						!state.live && audio_get_dsd_multiple() > 0);
 
 	// And Bluetooth receiver mode, which like the transfer is a thing the

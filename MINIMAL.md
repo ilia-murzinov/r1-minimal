@@ -5,6 +5,14 @@
 Home 2×2: NOW/PLAYING · BLUE/TOOTH · ARTISTS · GENRES. No Wi‑Fi / QP / clock.
 USB MSC by default; 10× Bluetooth title toggles ADB.
 
+## Gone from the tree
+
+Streaming (Tidal/Qobuz/podcast/radio), audiobooks + chapters UI, Wi‑Fi /
+AirPlay / DLNA / SonixLink, quickpanel, Gearboy/games/ebooks, and the
+temporary `removed_stubs` / `removed_features` shim layer.
+
+Sleep timer is music-only. LED has no podcast / Wi‑Fi-transfer patterns.
+
 ## What runs
 
 - Binary: `/usr/data/sonix_player.min` (~5.5 MB), also copied to `/usr/data/sonix_player`.

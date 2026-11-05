@@ -29,19 +29,8 @@
 #define PATTERN_PCM_HI 4
 #define PATTERN_DSD_WHITE 11
 #define PATTERN_OFF 5 // the logical-0 state: all registers zero
-// Podcast purple: pattern 13, added by hand to the driver script by the user,
-// like 12 for transfers. (The first attempt used 10, the stock MQA rendering
-// pattern, which lit up magenta rather than purple.)
-#define PATTERN_PODCAST_PURPLE 13
-// Wi-Fi transfer: pattern 12, added by hand to the driver script
-// (leds_sgm31324_add.sh, regs="000E7D00686601010706"). Lit while a transfer is
-// active, and never turned off by the standby option: with the screen dark it
-// is the only sign the transfer server is running.
-#define PATTERN_WIFI_TRANSFER 12
-// Bluetooth receiver: pattern 14, blue at full brightness, added by hand to the
-// driver script like 12 and 13. Lit for as long as the mode is on, screen off
-// included -- it is the only sign the player is being used as a pair of
-// headphones.
+// Bluetooth receiver: pattern 14, blue at full brightness. Lit for as long as
+// the mode is on, screen off included.
 #define PATTERN_BT_RECEIVER 14
 
 // With the "LED off in standby" option on, this long without anything playing
@@ -61,9 +50,7 @@ static int red_trigger_state = -1; // -1 unknown, 0 "none", 1 "breathing"
 static bool s_charging;
 static bool s_playing;
 static int s_rate;
-static bool s_podcast;		 // what is playing is a podcast episode
-static bool s_dsd;			 // ...or a DSD file, whatever its carrier rate
-static bool s_wifi_transfer; // a Wi-Fi transfer is active
+static bool s_dsd;			 // DSD file, whatever its carrier rate
 static bool s_bt_receiver;	 // Bluetooth receiver mode is on
 static bool s_dac_active;	 // DAC mode is on: the gadget is up
 static bool s_dac_streaming; // ...and the computer is actually sending audio
@@ -155,10 +142,8 @@ static void apply(void) {
 	}
 	if (s_playing && s_rate > 0) {
 		// Playback always shows its colour (red while actually charging, the
-		// stock priority). A podcast has its own colour, purple, whatever the
-		// sample rate: it says what is being listened to, not how it is sampled.
+		// stock priority).
 		pattern = charging_now ? PATTERN_CHARGING_RED
-				  : s_podcast  ? PATTERN_PODCAST_PURPLE
 				  : s_dsd	   ? PATTERN_DSD_WHITE
 							   : rate_pattern(s_rate);
 	} else if (s_dac_streaming && s_dac_rate > 0) {
@@ -171,11 +156,6 @@ static void apply(void) {
 		// Never darkened by the standby option: a charge in progress stays
 		// visible.
 		pattern = PATTERN_CHARGING_RED;
-	} else if (s_wifi_transfer) {
-		// A Wi-Fi transfer is running: its pattern stays lit even with the
-		// screen off, since it is the only sign the server is running, and it
-		// deliberately overrides the off-in-standby option.
-		pattern = PATTERN_WIFI_TRANSFER;
 	} else if (s_bt_receiver) {
 		// Bluetooth receiver mode, lit whether or not the sender is sending
 		// right now: the mode is what the LED reports, the way the transfer
@@ -254,10 +234,9 @@ void led_set_on_charger(bool present) {
 	apply();
 }
 
-void led_update_playback(bool playing, int sample_rate, bool podcast, bool dsd) {
+void led_update_playback(bool playing, int sample_rate, bool dsd) {
 	s_playing = playing && sample_rate > 0;
 	s_rate = sample_rate;
-	s_podcast = podcast;
 	s_dsd = dsd;
 	if (s_playing) {
 		s_last_playing = time(NULL);
@@ -272,14 +251,6 @@ void led_set_dac(bool active, bool streaming, int sample_rate) {
 	s_dac_active = active;
 	s_dac_streaming = streaming;
 	s_dac_rate = sample_rate;
-	apply();
-}
-
-void led_set_wifi_transfer(bool active) {
-	if (active == s_wifi_transfer) {
-		return;
-	}
-	s_wifi_transfer = active;
 	apply();
 }
 
