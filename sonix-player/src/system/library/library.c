@@ -2749,6 +2749,31 @@ static void list_sql(char *sql, size_t size, const char *select, library_list_t 
 		return;
 	}
 
+	// Artists that appear on at least one track of a genre (Genres → Artist).
+	// ARTIST_TABLE rowids so row_by_id_sql keeps answering from that table.
+	if (kind == LIBRARY_LIST_ARTISTS && filter == LIBRARY_FILTER_GENRE && value) {
+		const char *genre_on_m = genre_links
+									 ? "(m.genre=?1 OR m.path IN (SELECT path FROM GENRE_LINK WHERE genre=?1))"
+									 : "m.genre=?1";
+		const char *order_by = list_uses_sortkey(kind) ? "sortkey" : "artist COLLATE listorder";
+		if (artist_links) {
+			snprintf(sql, size,
+					 "SELECT %s FROM ARTIST_TABLE WHERE artist <> '' AND ("
+					 " EXISTS (SELECT 1 FROM MEDIA_TABLE m WHERE m.artist = ARTIST_TABLE.artist AND %s)"
+					 " OR EXISTS (SELECT 1 FROM ARTIST_LINK l JOIN MEDIA_TABLE m ON m.path = l.path"
+					 " WHERE l.artist = ARTIST_TABLE.artist AND %s))"
+					 " ORDER BY %s",
+					 select, genre_on_m, genre_on_m, order_by);
+		} else {
+			snprintf(sql, size,
+					 "SELECT %s FROM ARTIST_TABLE WHERE artist <> '' AND"
+					 " EXISTS (SELECT 1 FROM MEDIA_TABLE m WHERE m.artist = ARTIST_TABLE.artist AND %s)"
+					 " ORDER BY %s",
+					 select, genre_on_m, order_by);
+		}
+		return;
+	}
+
 	// Every record, artist and album artist by when it arrived. Their tables
 	// have no date of their own, so each is as new as the newest of its files:
 	// a record topped up with a bonus track moves up with it, and so does an
@@ -2899,12 +2924,14 @@ library_index_t *library_index_open(library_list_t kind, library_filter_t filter
 
 	const char *col = filter_column(filter);
 	// The filtered lists take a bound value: a track list narrowed to one
-	// album/artist/genre, and an album list narrowed to one artist or genre.
+	// album/artist/genre, an album list narrowed to one artist or genre, and
+	// an artist list narrowed to one genre.
 	bool bound = col && value &&
 				 (kind == LIBRARY_LIST_TRACKS ||
 				  (kind == LIBRARY_LIST_ALBUMS &&
 				   (filter == LIBRARY_FILTER_ARTIST || filter == LIBRARY_FILTER_ALBUM_ARTIST ||
-					filter == LIBRARY_FILTER_GENRE || filter == LIBRARY_FILTER_YEAR)));
+					filter == LIBRARY_FILTER_GENRE || filter == LIBRARY_FILTER_YEAR)) ||
+				  (kind == LIBRARY_LIST_ARTISTS && filter == LIBRARY_FILTER_GENRE));
 	// A search binds the pattern the value becomes, not the value.
 	char pattern[2 * 256 + 3];
 	if (filter == LIBRARY_FILTER_SEARCH) {

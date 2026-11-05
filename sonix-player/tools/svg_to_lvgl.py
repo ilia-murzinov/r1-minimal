@@ -110,6 +110,8 @@ ICONS = [
     ("usb-audio-out.svg", "usbaudioout", 26), # and when the sound leaves over USB-C
     ("volume-1.svg", "volume_low", 30),
     ("volume-2.svg", "volume_high", 30),
+    # Minimal R1: home glyph on the status bar (same size as play-status).
+    ("home.svg", "home", 26),
     # Power menu.
     ("power-off.svg", "power_off", 56),
     ("reboot.svg", "reboot", 56),

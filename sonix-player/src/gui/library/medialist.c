@@ -2631,10 +2631,18 @@ static void row_clicked_cb(lv_event_t *e) {
 		return;
 	}
 
-	// An artist, a genre or a year: its records, or its tracks when the album
-	// view is off. An album: the tracks.
+	// Genres → artists (who appear in that genre) → that artist's full album
+	// list (not genre-narrowed) → tracks.
+	if (p->kind == LIBRARY_LIST_GENRES) {
+		medialist_open(name, LIBRARY_LIST_ARTISTS, LIBRARY_FILTER_GENRE, name);
+		return;
+	}
+
+	// An artist, album artist or year: its records, or its tracks when the album
+	// view is off. An album: the tracks. Artists reached via a genre use the
+	// same artist filter, so all of their albums are reachable.
 	bool grouped = p->kind == LIBRARY_LIST_ARTISTS || p->kind == LIBRARY_LIST_ALBUM_ARTISTS ||
-				   p->kind == LIBRARY_LIST_GENRES || p->kind == LIBRARY_LIST_YEARS;
+				   p->kind == LIBRARY_LIST_YEARS;
 	bool artist_row = p->kind == LIBRARY_LIST_ARTISTS || p->kind == LIBRARY_LIST_ALBUM_ARTISTS;
 	if (grouped && (medialist_album_view() || (artist_row && artist_records))) {
 		medialist_open(name, LIBRARY_LIST_ALBUMS, filter_for(p->kind), name);
@@ -4835,7 +4843,8 @@ void medialist_open(const char *title, library_list_t kind, library_filter_t fil
 
 	// Which of the three screens this list belongs on. Tracks are always the
 	// last level; an album list narrowed to one artist or genre is the middle
-	// one; everything else is where a walk starts.
+	// one; genre→artists stays on the names screen (panel back-stack); everything
+	// else is where a walk starts.
 	bool tracks_like = (kind == LIBRARY_LIST_TRACKS || kind == LIBRARY_LIST_FAVOURITES ||
 						kind == LIBRARY_LIST_PLAYLIST || kind == LIBRARY_LIST_MOST_PLAYED);
 	bool artist_albums =

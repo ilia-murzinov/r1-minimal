@@ -54,11 +54,10 @@ static void rescan_long_cb(lv_event_t *e) {
 
 void main_menu_init(gui_config_t *cfg) {
 	/* Flat home 2×2, text-only uppercase literals (no tr keys).
-	 * BLUETOOTH is two lines so it fits a half-width tile at the same size
-	 * as NOW PLAYING (one long word overflows; a space would look truncated). */
+	 * SETTINGS opens the Bluetooth page (retitled) plus USB/ADB. */
 	const grid_entry_t entries[] = {
 		{"NOW\nPLAYING", NULL, NULL, open_now_playing},
-		{"BLUE\nTOOTH", NULL, &btsettings_screen, NULL},
+		{"SETTINGS", NULL, &btsettings_screen, NULL},
 		{"ARTISTS", NULL, NULL, open_artists},
 		{"GENRES", NULL, NULL, open_genres},
 	};

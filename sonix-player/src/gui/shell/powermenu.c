@@ -269,21 +269,18 @@ void powermenu_init(gui_config_t *cfg) {
 	lv_obj_set_flex_flow(pills, LV_FLEX_FLOW_COLUMN);
 	lv_obj_set_flex_align(pills, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
-	make_slide(pills, &slide_off, &icon_power_off, lv_color_make(224, 27, 36), "powermenu_slide_to_power_off", do_power_off);
-	// A fixed blue, deliberately not the accent: the two slides are power off
-	// (red) and reboot (blue), and an accent set to red or orange would make
-	// them impossible to tell apart at a glance.
-	make_slide(pills, &slide_reboot, &icon_reboot, lv_color_make(0, 122, 255), "powermenu_slide_to_restart", do_reboot);
+	// B&W minimal: both slides use white glyphs; the labels name the action.
+	make_slide(pills, &slide_off, &icon_power_off, lv_color_white(), "powermenu_slide_to_power_off", do_power_off);
+	make_slide(pills, &slide_reboot, &icon_reboot, lv_color_white(), "powermenu_slide_to_restart", do_reboot);
 
-	// Cancel: a round button at the bottom centre that goes red under the
-	// finger, with its label floating underneath.
+	// Cancel: white disc; pressed = solid white (no red flash).
 	lv_obj_t *cancel = lv_btn_create(panel);
 	lv_obj_set_size(cancel, CANCEL_SIZE, CANCEL_SIZE);
 	lv_obj_align(cancel, LV_ALIGN_BOTTOM_MID, 0, -84);
 	lv_obj_set_style_radius(cancel, LV_RADIUS_CIRCLE, 0);
 	lv_obj_set_style_bg_color(cancel, lv_color_white(), 0);
 	lv_obj_set_style_bg_opa(cancel, LV_OPA_30, 0);
-	lv_obj_set_style_bg_color(cancel, lv_color_make(224, 27, 36), LV_STATE_PRESSED);
+	lv_obj_set_style_bg_color(cancel, lv_color_make(90, 90, 90), LV_STATE_PRESSED);
 	lv_obj_set_style_bg_opa(cancel, LV_OPA_COVER, LV_STATE_PRESSED);
 	lv_obj_set_style_border_width(cancel, 0, 0);
 	lv_obj_set_style_shadow_width(cancel, 0, 0);

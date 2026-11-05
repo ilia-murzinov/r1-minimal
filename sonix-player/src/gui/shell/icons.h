@@ -56,6 +56,7 @@ extern const lv_image_dsc_t icon_headphones;
 extern const lv_image_dsc_t icon_usbaudioout;
 extern const lv_image_dsc_t icon_volume_low;
 extern const lv_image_dsc_t icon_volume_high;
+extern const lv_image_dsc_t icon_home;
 extern const lv_image_dsc_t icon_power_off;
 extern const lv_image_dsc_t icon_reboot;
 extern const lv_image_dsc_t icon_battery_warning;

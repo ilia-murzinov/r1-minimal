@@ -325,6 +325,10 @@ static bool g_screen_view_hold; // see power_hold_screen_for_view
 #define DRIVER_LIMIT_NODE "/sys/class/power_supply/mp2731-charger/charge_limit_percent"
 #define DRIVER_HELD_NODE "/sys/class/power_supply/mp2731-charger/charge_limit_held"
 
+// R1 / AXP2101: enable bit under the fuel-gauge supply. Same 0/1 contract as
+// step_charging_enabled — write 0 to hold the charge, 1 to let it run.
+#define AXP_CHARGER_NODE "/sys/class/power_supply/axp_battery/charger"
+
 static const char *g_charge_node;	 // the writable node, NULL if there is none
 static int g_charge_limit = 100;	 // 100 = charge to full
 static bool g_charging_suspended;
@@ -344,18 +348,25 @@ static void find_charge_node(void) {
 	}
 	searched = true;
 
-	if (access(STEP_CHARGING_NODE, W_OK) != 0) {
-		printf("power: %s is not writable; the charge limit cannot be enforced\n", STEP_CHARGING_NODE);
+	if (access(STEP_CHARGING_NODE, W_OK) == 0) {
+		g_charge_node = STEP_CHARGING_NODE;
+		g_driver_limit = access(DRIVER_LIMIT_NODE, W_OK) == 0;
+		if (g_driver_limit) {
+			printf("power: charge limit kept by the driver through %s\n", DRIVER_LIMIT_NODE);
+		} else {
+			printf("power: charge limit will use %s\n", g_charge_node);
+		}
 		return;
 	}
 
-	g_charge_node = STEP_CHARGING_NODE;
-	g_driver_limit = access(DRIVER_LIMIT_NODE, W_OK) == 0;
-	if (g_driver_limit) {
-		printf("power: charge limit kept by the driver through %s\n", DRIVER_LIMIT_NODE);
-	} else {
+	if (access(AXP_CHARGER_NODE, W_OK) == 0) {
+		g_charge_node = AXP_CHARGER_NODE;
+		g_driver_limit = false;
 		printf("power: charge limit will use %s\n", g_charge_node);
+		return;
 	}
+
+	printf("power: no writable charge-enable node; the charge limit cannot be enforced\n");
 }
 
 // Whether the driver is holding the charge at the limit right now.

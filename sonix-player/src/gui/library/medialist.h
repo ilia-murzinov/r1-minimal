@@ -7,10 +7,10 @@
 #include "lvgl/lvgl.h"
 
 // The library index pages: one screen for name lists (albums, artists, album
-// artists, genres), one for one artist's or one genre's records, and one for
-// track lists (all tracks, and the tracks of whatever was tapped). A screen each
-// rather than one reused, so the back chevron walks artists -> that artist's
-// albums -> the album's tracks and back out again the way it should.
+// artists, genres, and artists-in-a-genre), one for one artist's or one
+// genre-scoped artist's records, and one for track lists. A screen each rather
+// than one reused, so the back chevron walks genres -> artists -> albums ->
+// tracks (and artists -> albums -> tracks) the way it should.
 //
 // Rows are a fixed pool windowed over the scroll position, the same technique
 // as the file browser, and the data is windowed with them: the page holds the
@@ -18,18 +18,18 @@
 // rows back as the viewport moves, so the library has no size ceiling.
 extern lv_obj_t *medialist_screen;
 extern lv_obj_t *medialist_tracks_screen;
-// The middle level: one artist's or one genre's records. Its own screen and
-// not the first one reused, because the way back from an album's tracks is
-// those albums and the way back from those is the artist or genre list -- three
-// lists, and a screen cannot be two of them at once.
+// The middle level: one artist's records (or one artist's records inside a
+// genre). Its own screen and not the first one reused, because the way back
+// from an album's tracks is those albums and the way back from those is the
+// artist list -- and genres keep their artist list on the names screen via the
+// panel back-stack.
 extern lv_obj_t *medialist_albums_screen;
 
 void medialist_init(gui_config_t *cfg);
 
-// Whether tapping an artist or a genre opens its records or its tracks. On by
-// default; Music > Library turns it off, and an artist or genre page is
-// then a flat list of tracks (an artist's with the album grouping on the corner
-// button).
+// Whether tapping an artist opens its records or its tracks. On by default.
+// Genres always open their artists first; this switch then decides albums vs
+// flat tracks under that artist-in-genre. Music > Library turns it off.
 bool medialist_album_view(void);
 void medialist_set_album_view(bool on);
 

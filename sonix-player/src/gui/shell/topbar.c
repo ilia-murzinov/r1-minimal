@@ -4,7 +4,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <ctype.h>
 #include <time.h>
 
 #include "lvgl/lvgl.h"
@@ -12,6 +11,8 @@
 #include "src/gui/fonts/fonts.h"
 #include "src/gui/shell/clocklabel.h"
 #include "src/gui/shell/icons.h"
+#include "src/gui/shell/main_menu.h"
+#include "src/gui/shell/switcher.h"
 #include "src/gui/nowplaying/player.h"
 #include "src/gui/shell/theme.h"
 #include "src/system/audio/alsa-controls.h"
@@ -60,6 +61,7 @@
 
 static lv_obj_t *top_bar;
 static lv_obj_t *bat_label;
+static lv_obj_t *charge_icon; // tiny zap while charging — no battery shell
 static lv_obj_t *vol_label;
 static lv_obj_t *vol_icon;
 static lv_obj_t *hp_icon; // headphone jack indicator: hidden / theme / gold
@@ -69,6 +71,7 @@ static lv_timer_t *library_timer; // takes the check glyph away
 static void refresh_play_icon(const device_state_t *state);
 static lv_obj_t *clock_label;
 static lv_obj_t *bt_icon;   // bluetooth, leftmost of the right-hand group
+static lv_obj_t *home_icon; // tap → main menu (Minimal R1)
 static lv_obj_t *container_left;  // volume group (and the clock, when "left")
 static lv_obj_t *container_right; // battery group (and the clock, when "right")
 static lv_timer_t *battery_timer;
@@ -117,17 +120,19 @@ static int parse_percent(const char *text) {
 	return value;
 }
 
-// Minimal R1: percent text only (icon/fill/bolt were dropped).
+// Percent always; a small zap only while charge is actually going in.
 static void update_battery_indicator(int percent, bool charging) {
-	(void)charging;
 	if (!bat_label) {
 		return;
 	}
 	if (percent < 0) {
 		lv_label_set_text(bat_label, "--%");
-		return;
+	} else {
+		lv_label_set_text_fmt(bat_label, "%d%%", percent);
 	}
-	lv_label_set_text_fmt(bat_label, "%d%%", percent);
+	if (charge_icon) {
+		lv_obj_set_hidden(charge_icon, !charging);
+	}
 }
 
 // Redraws the clock. Before the time has been set there is nothing truthful to
@@ -242,70 +247,9 @@ static void refresh_headphone_icon(void) {
 	}
 
 	lv_obj_set_hidden(hp_icon, false);
-	if (state == JACK_BALANCED) {
-		// Gold marks the balanced output.
-		lv_obj_set_style_image_recolor(hp_icon, lv_color_make(212, 175, 55), 0);
-		lv_obj_set_style_image_recolor_opa(hp_icon, LV_OPA_COVER, 0);
-	} else {
-		// The single-ended jack keeps the theme's icon colour.
-		lv_obj_remove_local_style_prop(hp_icon, LV_STYLE_IMAGE_RECOLOR, 0);
-		lv_obj_remove_local_style_prop(hp_icon, LV_STYLE_IMAGE_RECOLOR_OPA, 0);
-	}
-}
-
-// The codec the Bluetooth link is carrying, in whichever direction it runs:
-// headphones being fed from here, or a phone sending to this player. Both are
-// cache reads, so this is safe on the poll. Empty when nothing is connected.
-static void bt_current_codec(char *out, size_t size) {
-	out[0] = '\0';
-
-	if (bluetooth_audio_active()) {
-		char offered[BT_MAX_CODECS][BT_CODEC_MAX];
-		char selected[BT_CODEC_MAX] = "";
-		bluetooth_get_codecs(offered, BT_MAX_CODECS, selected, sizeof(selected));
-		snprintf(out, size, "%s", selected);
-		return;
-	}
-
-	bt_stream_t stream;
-	if (bluetooth_receiver_stream(&stream)) {
-		snprintf(out, size, "%s", stream.codec);
-	}
-}
-
-// The Bluetooth glyph wears the colour of the codec family in use, out of the
-// Adwaita palette the rest of the interface is drawn from: orange for SBC,
-// green for AAC, purple for aptX, blue for LDAC, each in the light or dark
-// variant the palette gives for it.
-//
-// By family and not by name: aptX-HD is aptX and SBC-XQ is SBC, and a codec
-// this has never heard of gets no colour at all rather than a wrong one.
-// Compared on letters and digits only, in lower case, the way bluetooth.c
-// compares them -- bluealsa spells it "aptX-HD" and a config file might say
-// "aptx_hd".
-static bool bt_codec_color(const char *codec, lv_color_t *out) {
-	char key[BT_CODEC_MAX];
-	size_t used = 0;
-	for (const char *p = codec; *p && used + 1 < sizeof(key); p++) {
-		if (isalnum((unsigned char)*p)) {
-			key[used++] = (char)tolower((unsigned char)*p);
-		}
-	}
-	key[used] = '\0';
-
-	bool dark = theme_is_dark();
-	if (strncmp(key, "ldac", 4) == 0) {
-		*out = dark ? lv_color_make(0x62, 0xA0, 0xEA) : lv_color_make(0x1A, 0x5F, 0xB4);
-	} else if (strncmp(key, "aptx", 4) == 0) {
-		*out = dark ? lv_color_make(0xDC, 0x8A, 0xDD) : lv_color_make(0x81, 0x3D, 0x9C);
-	} else if (strncmp(key, "aac", 3) == 0) {
-		*out = dark ? lv_color_make(0x57, 0xE3, 0x89) : lv_color_make(0x26, 0xA2, 0x69);
-	} else if (strncmp(key, "sbc", 3) == 0) {
-		*out = dark ? lv_color_make(0xFF, 0xA3, 0x48) : lv_color_make(0xC6, 0x46, 0x00);
-	} else {
-		return false;
-	}
-	return true;
+	// B&W minimal: no gold for balanced — same ink as SE.
+	lv_obj_remove_local_style_prop(hp_icon, LV_STYLE_IMAGE_RECOLOR, 0);
+	lv_obj_remove_local_style_prop(hp_icon, LV_STYLE_IMAGE_RECOLOR_OPA, 0);
 }
 
 // The two radios, immediately left of the charge percentage: bluetooth first,
@@ -326,19 +270,9 @@ void topbar_refresh_radios(void) {
 			lv_obj_set_style_image_opa(bt_icon,
 									   bluetooth_get_state() == BT_STATE_CONNECTED ? LV_OPA_COVER : RADIO_IDLE_OPA, 0);
 
-			// A local colour while a codec is known, and the shared icon style
-			// back when it is not: a radio that is merely on has no codec to
-			// name, and the glyph belongs to the theme again.
-			char codec[BT_CODEC_MAX];
-			lv_color_t color;
-			bt_current_codec(codec, sizeof(codec));
-			if (codec[0] && bt_codec_color(codec, &color)) {
-				lv_obj_set_style_image_recolor(bt_icon, color, 0);
-				lv_obj_set_style_image_recolor_opa(bt_icon, LV_OPA_COVER, 0);
-			} else {
-				lv_obj_remove_local_style_prop(bt_icon, LV_STYLE_IMAGE_RECOLOR, 0);
-				lv_obj_remove_local_style_prop(bt_icon, LV_STYLE_IMAGE_RECOLOR_OPA, 0);
-			}
+			// B&W minimal: no codec-family tint on the glyph.
+			lv_obj_remove_local_style_prop(bt_icon, LV_STYLE_IMAGE_RECOLOR, 0);
+			lv_obj_remove_local_style_prop(bt_icon, LV_STYLE_IMAGE_RECOLOR_OPA, 0);
 		}
 	}
 }
@@ -406,15 +340,9 @@ static void refresh_play_icon(const device_state_t *state) {
 		return;
 	}
 
-	// The play glyph turns blue while the sound is leaving over Bluetooth, so a
-	// glance at the bar says where the music is going, not just that it is
-	// going. A fixed Bluetooth blue rather than the accent colour, because it
-	// means wireless, not active.
-	if (state->status == AUDIO_STATUS_PLAYING && bluetooth_audio_active()) {
-		lv_obj_set_style_image_recolor(play_icon, lv_color_make(0, 122, 255), 0);
-	} else {
-		lv_obj_remove_local_style_prop(play_icon, LV_STYLE_IMAGE_RECOLOR, 0);
-	}
+	// Same ink as the rest of the bar (B&W minimal). Bluetooth still has its
+	// own glyph; the play mark does not turn blue for wireless.
+	lv_obj_remove_local_style_prop(play_icon, LV_STYLE_IMAGE_RECOLOR, 0);
 	lv_obj_set_hidden(play_icon, false);
 }
 
@@ -590,6 +518,18 @@ static void topbar_refresh_theme(void) {
 // battery; a downward drag on it does nothing.
 static void topbar_drag_cb(lv_event_t *e) { (void)e; }
 
+static void home_icon_cb(lv_event_t *e) {
+	(void)e;
+	if (player_sheet_is_open()) {
+		player_sheet_close(false);
+	}
+	if (lv_screen_active() == main_menu_screen) {
+		return;
+	}
+	screen_history_reset();
+	switch_screen_no_history(main_menu_screen);
+}
+
 // Nothing inside the bar takes a press; the bar does.
 //
 // Every press on the status bar has one meaning -- pull the control centre down
@@ -708,12 +648,18 @@ void topbar_init(gui_config_t *cfg) {
 	lv_obj_add_style(bt_icon, &theme_style_icon, 0);
 	lv_obj_set_hidden(bt_icon, true);
 
-	// Minimal R1: percent only — no battery shell/bolt glyph.
+	// Percent, then a tiny zap only while charge is going in (no battery shell).
 	bat_label = lv_label_create(container_right);
 	lv_label_set_text(bat_label, "--%");
 	topbar_set_battery_percent(config_get_int("screen", "battery_percent", 1) != 0);
 	lv_obj_add_style(bat_label, &theme_style_text, 0);
 	lv_obj_set_style_text_font(bat_label, &font_ui_24, 0);
+
+	charge_icon = lv_image_create(container_right);
+	lv_image_set_src(charge_icon, &icon_zap);
+	lv_image_set_scale(charge_icon, (256 * 18) / 34); // 34px zap → ~18px
+	lv_obj_add_style(charge_icon, &theme_style_icon, 0);
+	lv_obj_set_hidden(charge_icon, true);
 
 	// Clock object kept (tint / refresh paths) but Minimal R1 keeps it hidden.
 	clock_label = clocklabel_create(top_bar, &font_ui_24, 24, &font_ui_14, 14);
@@ -725,7 +671,7 @@ void topbar_init(gui_config_t *cfg) {
 	// until a tinted page is shown (topbar_tint_on_screen).
 	lv_style_init(&tint_text_style);
 	lv_style_init(&tint_icon_style);
-	lv_obj_t *tinted_icons[] = {vol_icon, hp_icon, play_icon, library_icon, bt_icon};
+	lv_obj_t *tinted_icons[] = {vol_icon, hp_icon, play_icon, library_icon, bt_icon, charge_icon};
 	for (size_t i = 0; i < sizeof(tinted_icons) / sizeof(tinted_icons[0]); i++) {
 		lv_obj_add_style(tinted_icons[i], &tint_icon_style, 0);
 	}
@@ -780,6 +726,17 @@ void topbar_init(gui_config_t *cfg) {
 	// off; only what is inside it gives presses up.
 	topbar_clear_child_presses(top_bar);
 
+	// Home: centred where the clock was. Added after clear_child_presses so it
+	// stays clickable (everything else on the bar deliberately is not).
+	home_icon = lv_image_create(top_bar);
+	lv_image_set_src(home_icon, &icon_home);
+	lv_obj_add_style(home_icon, &theme_style_icon, 0);
+	lv_obj_add_style(home_icon, &tint_icon_style, 0);
+	lv_obj_align(home_icon, LV_ALIGN_CENTER, 0, 0);
+	lv_obj_set_clickable(home_icon, true);
+	lv_obj_set_ext_click_area(home_icon, 12);
+	lv_obj_add_event_cb(home_icon, home_icon_cb, LV_EVENT_CLICKED, NULL);
+
 	// The battery shell is recoloured by hand rather than by a style, so it needs
 	// a repaint when the palette changes.
 	theme_register_refresh(topbar_refresh_theme);
@@ -823,7 +780,7 @@ static void tint_apply(void) {
 	lv_obj_report_style_change(&tint_text_style);
 	lv_obj_report_style_change(&tint_icon_style);
 
-	last_battery_percent = -2; // next poll repaints the percent label
+	last_battery_percent = -2; // next poll repaints percent / zap
 }
 
 // The blur and the dimming behind the bar, or neither.

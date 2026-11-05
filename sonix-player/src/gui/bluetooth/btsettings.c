@@ -30,6 +30,7 @@ lv_obj_t *btsettings_screen;
 #define CORNER_BTN_SIZE 56
 
 static lv_obj_t *bt_switch;
+static lv_obj_t *adb_switch;
 static lv_obj_t *status_label;
 static lv_obj_t *paired_label;
 static lv_obj_t *paired_list;
@@ -61,6 +62,7 @@ typedef enum {
 static last_action_t last_action;
 
 static void rebuild_lists(void);
+static void sync_adb_switch(void);
 
 // ---------------------------------------------------------------------------
 // Pairing watch
@@ -723,6 +725,7 @@ static void screen_loaded_cb(lv_event_t *e) {
 	lv_timer_resume(poll_timer);
 	lv_timer_ready(poll_timer);
 	bluetooth_refresh();
+	sync_adb_switch();
 	// Visible to other devices only from here. Searching and being searched for
 	// are the two halves of the same page: without this a phone looking for the
 	// player finds nothing, whatever it does.
@@ -791,63 +794,36 @@ static lv_obj_t *make_section(lv_obj_t *container, const char *title, lv_obj_t *
 	return box;
 }
 
-// Stock-style hidden ADB entry: 10 taps on the Bluetooth header band.
-// ADB and the USB drive are exclusive (see usb.c).
-#define ADB_TITLE_TAPS 10
-#define ADB_TITLE_TAP_WINDOW_MS 4000
-#define ADB_HEADER_CORNER_SLOTS 3
+#define SETTINGS_HEADER_CORNER_SLOTS 3
 
-static int adb_title_taps;
-static uint32_t adb_title_tap_since;
-
-static void adb_title_tapped_cb(lv_event_t *e) {
-	(void)e;
-
-	uint32_t now = lv_tick_get();
-	if (adb_title_taps == 0 || lv_tick_elaps(adb_title_tap_since) > ADB_TITLE_TAP_WINDOW_MS) {
-		adb_title_taps = 0;
-		adb_title_tap_since = now;
-	}
-	adb_title_taps++;
-
-	if (adb_title_taps < ADB_TITLE_TAPS) {
+// ADB and the USB mass-storage drive are exclusive (see usb.c).
+static void adb_switch_changed_cb(lv_event_t *e) {
+	lv_obj_t *sw = lv_event_get_target(e);
+	bool on = lv_obj_has_state(sw, LV_STATE_CHECKED);
+	if (on == adb_switched_on()) {
 		return;
 	}
-	adb_title_taps = 0;
-
-	bool on = !adb_switched_on();
 	adb_set_enabled(on);
-	// Enabling ADB yanks the Mac disk (no eject needed); disabling gives it back.
 	toast_plain(on ? "ADB on — disk dropped" : "ADB off — USB drive");
 }
 
-// Fat invisible hit over the whole title row (between back chevron and the
-// corner buttons). The label alone is one text line and drops taps.
-static void adb_attach_header_hit(lv_obj_t *screen, gui_config_t *cfg) {
-	int left = cfg->padding + CORNER_BTN_SIZE + 14;
-	int right = cfg->padding + ADB_HEADER_CORNER_SLOTS * (CORNER_BTN_SIZE + 6);
-	int w = cfg->screen_width - left - right;
-	if (w < 40) {
-		w = 40;
+static void sync_adb_switch(void) {
+	if (!adb_switch) {
+		return;
 	}
-
-	lv_obj_t *hit = lv_obj_create(screen);
-	lv_obj_remove_style_all(hit);
-	lv_obj_set_size(hit, w, CORNER_BTN_SIZE);
-	lv_obj_set_style_bg_opa(hit, LV_OPA_TRANSP, 0);
-	lv_obj_set_clickable(hit, true);
-	lv_obj_align(hit, LV_ALIGN_TOP_LEFT, left, cfg->padding + cfg->top_bar_height);
-	lv_obj_add_event_cb(hit, adb_title_tapped_cb, LV_EVENT_CLICKED, NULL);
+	if (adb_switched_on()) {
+		lv_obj_add_state(adb_switch, LV_STATE_CHECKED);
+	} else {
+		lv_obj_clear_state(adb_switch, LV_STATE_CHECKED);
+	}
 }
 
 void btsettings_init(gui_config_t *cfg) {
-	lv_obj_t *container = settingsrow_page(btsettings_screen, cfg, "bluetooth");
+	lv_obj_t *container = settingsrow_page(btsettings_screen, cfg, "settings");
 	lv_obj_t *title = settingsrow_page_title(btsettings_screen);
-	settingsrow_title_corner_slots(title, cfg, ADB_HEADER_CORNER_SLOTS);
+	settingsrow_title_corner_slots(title, cfg, SETTINGS_HEADER_CORNER_SLOTS);
 
-	// Before the corner buttons so those stay on top and keep their own taps.
-	adb_attach_header_hit(btsettings_screen, cfg);
-
+	settingsrow_heading(container, "bluetooth");
 	settingsrow_toggle(container, "bluetooth", &bt_switch, switch_changed_cb);
 	if (bluetooth_get_enabled()) {
 		lv_obj_add_state(bt_switch, LV_STATE_CHECKED);
@@ -863,6 +839,22 @@ void btsettings_init(gui_config_t *cfg) {
 	paired_list = make_section(container, "bt_paired_devices", &paired_label);
 	found_list = make_section(container, "bt_other_devices", &found_label);
 	lv_obj_set_style_pad_bottom(found_list, 12, 0);
+
+	// ADB stays pinned under the scroll area so long device lists do not bury it.
+	const int adb_footer_h = 100 + cfg->padding + 8;
+	lv_obj_set_height(container, cfg->screen_height - settingsrow_content_top(cfg) - adb_footer_h);
+
+	lv_obj_t *adb_footer = lv_obj_create(btsettings_screen);
+	lv_obj_set_size(adb_footer, lv_pct(100), adb_footer_h);
+	lv_obj_align(adb_footer, LV_ALIGN_BOTTOM_MID, 0, 0);
+	lv_obj_set_style_bg_opa(adb_footer, 0, 0);
+	lv_obj_set_style_border_width(adb_footer, 0, 0);
+	lv_obj_set_style_pad_hor(adb_footer, cfg->padding, 0);
+	lv_obj_set_style_pad_bottom(adb_footer, cfg->padding, 0);
+	lv_obj_set_style_pad_top(adb_footer, 8, 0);
+	lv_obj_set_scrollable(adb_footer, false);
+	settingsrow_toggle(adb_footer, "ADB", &adb_switch, adb_switch_changed_cb);
+	sync_adb_switch();
 
 	// The gear takes slot 0, the same corner the Music page uses for its own.
 	// Receiver mode sits immediately to its left, and the scan button moves out

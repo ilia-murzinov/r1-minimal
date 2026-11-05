@@ -1855,9 +1855,11 @@ static int config_standby_seconds(void) {
 
 static void apply_saved_power_config(void) {
 	if (axpcharge_applies()) {
-		// The R1 has no percentage slider: a percentage limit saved on it
-		// becomes the 80 % switch.
-		if (config_get_int("power", "charge_limit", 100) < 100) {
+		// Minimal R1: no Power settings page. Keep the stock 80 % voltage
+		// cap (REG64h → 4.20 V) on; a leftover charge_limit < 100 from an
+		// older build is folded into that same switch.
+		if (config_get_int("power", "charge_limit", 100) < 100 ||
+			!config_get_bool("power", "charge_limit_80", false)) {
 			config_set_int("power", "charge_limit", 100);
 			config_set_bool("power", "charge_limit_80", true);
 			config_save();
@@ -1948,6 +1950,15 @@ int main(int argc, char **argv) {
 	bool first_start = stat(config_file, &config_st) != 0;
 #endif
 	config_init(config_file);
+
+	// Minimal R1: force the stock 80 % cap into the config *before* the
+	// charge screen reads it. Otherwise a cable boot applies charge_limit_80=0
+	// and axpcharge keeps rewriting REG64h back to 4.40 V.
+	if (axpcharge_applies() && !config_get_bool("power", "charge_limit_80", false)) {
+		config_set_bool("power", "charge_limit_80", true);
+		config_set_int("power", "charge_limit", 100);
+		config_save();
+	}
 
 	// A start by the cable is the charging screen alone, until the power key is
 	// held: before anything else opens the display, the keys or the audio.

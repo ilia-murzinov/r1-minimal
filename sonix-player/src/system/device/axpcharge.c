@@ -62,6 +62,7 @@ bool axpcharge_reg_write(uint8_t reg, uint8_t value) {
 // REG64h[2:0], charge target voltage: 1 4.00 V, 2 4.10 V, 3 4.20 V, 4 4.35 V,
 // 5 4.40 V. The R1's axp2101.sh loads the driver with
 // charge_voltage_limit=4400, which the driver writes here at every boot.
+// Level 3 / 4.20 V is the stock "80 %" switch (charge_limit_80).
 #define AXP_REG_VOLTAGE 0x64
 #define AXP_VOLTAGE_MASK 0x07u
 #define AXP_VOLTAGE_CAP 3u
