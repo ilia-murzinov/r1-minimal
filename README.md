@@ -1,33 +1,28 @@
-﻿# Sonix Player
+﻿# R1 Minimal (Sonix fork)
 
-A replacement player for the **HiBy R3 Pro II** and the **HiBy R1**, written on
-LVGL.
+Personal **HiBy R1** cut of [Jepl4r/sonix-player](https://github.com/Jepl4r/sonix-player):
+2×2 home, MSC USB by default, library scan without Settings, B&W UX.
+Audio and Bluetooth engines are unchanged.
 
-Everything it can do is in **[FEATURES.md](FEATURES.md)**.
+**Surface and flash notes:** **[MINIMAL.md](MINIMAL.md)**.
 
-## Install
+Upstream feature list (much of it removed here): **[FEATURES.md](FEATURES.md)**.
 
-1. Download the firmware for your player from the
-   **[latest release](https://github.com/Jepl4r/sonix-player/releases/latest)**:
-   `r3proii.upt` for the R3 Pro II, `r1.upt` for the R1. **Never the other
-   one**: the update does not check which player it is given.
-2. Charge the player **above 30%**.
-3. Copy the `.upt` file to the **root of the microSD card** and put the card
-   in the player.
-4. Start the update:
-   - **from the stock firmware** - use its firmware update from the microSD
-     card.
-   - **from Sonix Player** - Settings > System > Update firmware > From SD
-     card.
-5. Let it flash: it says "Upgrading...", then "Succeeded", and reboots by
-   itself.
+## Install (R1 only)
 
-Once Sonix Player is installed, later versions can be installed straight from
-the player: Settings > System > Update firmware > Via internet downloads the
-right file from the latest release by itself.
+There is **no Settings → Update** path in this build. Flash from Recovery:
 
-> **Going back to the stock firmware:** flash the original firmware from
-> HiBy's website the same way.
+1. Build `r1.upt` (`cp .build-out/sonix_player sonix-packer/sonix_player`
+   then `./sonix_firmware_packer.sh` in `sonix-packer/`), or take a release
+   artifact when one is published.
+2. Charge **above 30%**. Copy `r1.upt` to the **root of the microSD** card.
+3. On the device: Recovery via `bootmode.sh` with that card inserted
+   (see MINIMAL.md). Let it finish and reboot.
+
+Soft bind (ADB on, survives until reboot only) is also in MINIMAL.md.
+
+> **Going back:** flash stock HiBy firmware the same Recovery way, or a
+> full upstream Sonix `r1.upt`.
 
 ---
 
