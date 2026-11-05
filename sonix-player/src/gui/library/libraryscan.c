@@ -11,7 +11,6 @@
 #include "lvgl/lvgl.h"
 
 #include "src/gui/fonts/fonts.h"
-#include "src/gui/library/music.h"
 #include "src/gui/shell/icons.h"
 #include "src/gui/shell/main_menu.h"
 #include "src/gui/shell/settingsrow.h"
@@ -62,16 +61,16 @@ static void poll_cb(lv_timer_t *timer) {
 	show_finished(found);
 }
 
-// Back to the Music page, which now shows the library, with the menu as the
-// only page behind it: walking back through a finished scan makes no sense.
-static void back_to_music(void) {
+// Home is the library entry on this build; walking back through a finished
+// scan makes no sense, so reset history and land on the 2×2 menu.
+static void back_home(void) {
 	screen_history_reset();
-	switch_screen_no_history(music_screen);
+	switch_screen_no_history(main_menu_screen);
 }
 
 static void ok_cb(lv_event_t *e) {
 	(void)e;
-	back_to_music();
+	back_home();
 }
 
 // Stopping is not throwing away: the scan thread winds up at the next file and
@@ -84,7 +83,7 @@ static void cancel_cb(lv_event_t *e) {
 	lv_timer_pause(poll_timer);
 	power_hold_screen_on(false);
 
-	back_to_music();
+	back_home();
 }
 
 void libraryscan_begin(void) {
@@ -269,6 +268,12 @@ static void pick_scan_cb(lv_event_t *e) {
 	switch_screen(libraryscan_screen);
 }
 
+// Accent is white in the B&W theme; white ink on a white fill vanishes.
+static lv_color_t ink_on(lv_color_t bg) {
+	int luma = (bg.red * 299 + bg.green * 587 + bg.blue * 114) / 1000;
+	return luma > 140 ? lv_color_hex(0x1A1A1A) : lv_color_white();
+}
+
 static lv_obj_t *pick_button(lv_obj_t *parent, const char *text, bool accent, lv_event_cb_t cb) {
 	lv_obj_t *btn = lv_btn_create(parent);
 	lv_obj_set_height(btn, 56);
@@ -276,12 +281,13 @@ static lv_obj_t *pick_button(lv_obj_t *parent, const char *text, bool accent, lv
 	lv_obj_set_style_radius(btn, LV_RADIUS_CIRCLE, 0);
 	lv_obj_set_style_shadow_width(btn, 0, 0);
 	lv_obj_set_style_border_width(btn, 0, 0);
-	lv_obj_set_style_bg_color(btn, accent ? theme()->accent : theme()->surface_pressed, 0);
+	lv_color_t bg = accent ? theme()->accent : theme()->surface_pressed;
+	lv_obj_set_style_bg_color(btn, bg, 0);
 	lv_obj_add_event_cb(btn, cb, LV_EVENT_CLICKED, NULL);
 	lv_obj_t *label = lv_label_create(btn);
 	lv_label_set_text(label, tr(text));
 	lv_obj_set_style_text_font(label, &font_ui_22, 0);
-	lv_obj_set_style_text_color(label, accent ? lv_color_white() : theme()->text_primary, 0);
+	lv_obj_set_style_text_color(label, ink_on(bg), 0);
 	lv_obj_center(label);
 	return btn;
 }
@@ -437,7 +443,7 @@ static lv_obj_t *make_button(lv_obj_t *parent, const char *text, lv_color_t colo
 	lv_obj_t *label = lv_label_create(button);
 	lv_label_set_text(label, tr(text));
 	lv_obj_set_style_text_font(label, &font_ui_24, 0);
-	lv_obj_set_style_text_color(label, lv_color_white(), 0);
+	lv_obj_set_style_text_color(label, ink_on(colour), 0);
 	lv_obj_center(label);
 
 	return button;
