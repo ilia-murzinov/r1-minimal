@@ -3254,28 +3254,10 @@ void player_refresh_now_playing(void) {
 // the sheet: dragging the player in and out
 // ---------------------------------------------------------------------------
 
-// How far across the screen the drag has to get before letting go opens (or
-// closes) it rather than snapping back. A third is enough to feel deliberate
-// without demanding the whole width.
-#define SHEET_COMMIT_FRACTION 3
-
 #define SHEET_ANIM_MS 220
-
-// Sideways movement past this is a drag, not a tap.
-#define DRAG_COMMIT_PX 16
 
 static int sheet_width;
 static lv_obj_t *sheet_under; // the page the sheet first slid over
-
-// Where the sheet was when the finger went down, and where the finger was.
-static int drag_origin_x;
-static lv_point_t drag_start_point;
-static bool dragging;
-
-// True once a gesture has moved far enough sideways to count as a drag. Read
-// by the tap handlers on the pages behind, so that swiping across a menu tile
-// does not also select it.
-static bool drag_committed;
 
 static void sheet_anim_x_cb(void *obj, int32_t value) {
 	lv_obj_set_x((lv_obj_t *)obj, (int)value);
@@ -3317,7 +3299,8 @@ static void sheet_move_to(int x, bool animate) {
 
 bool player_sheet_is_open(void) { return sheet_open; }
 
-bool player_sheet_drag_active(void) { return drag_committed; }
+// Minimal R1: sideways sheet drag is off (home tile / back only).
+bool player_sheet_drag_active(void) { return false; }
 
 // The status bar over the open player, when it stays up there: blurring the
 // cover under it, on nothing in Studio -- the blurred picture behind
@@ -3453,171 +3436,13 @@ void player_sheet_close(bool animate) {
 	lv_anim_start(&a);
 }
 
-// Runs from lv_async_call, one tick after the gesture's own events (RELEASED,
-// then CLICKED) have all been delivered: the suppression the flag exists for
-// has happened by then, and nothing later may still be blocked by it.
-static void drag_committed_clear_cb(void *unused) {
-	(void)unused;
-	drag_committed = false;
-}
-
-// One handler for both directions. `opening` is passed as the user data: true
-// when the drag starts on something behind the sheet, false when it starts on
-// the sheet itself.
-static void sheet_drag_cb(lv_event_t *e) {
-	bool opening = (bool)(uintptr_t)lv_event_get_user_data(e);
-	lv_event_code_t code = lv_event_get_code(e);
-
-	lv_indev_t *indev = lv_indev_active();
-	if (!indev) {
-		return;
-	}
-
-	if (code == LV_EVENT_PRESSED) {
-		if (opening == sheet_open) {
-			return; // dragging the wrong way for the current state
-		}
-
-		lv_indev_get_point(indev, &drag_start_point);
-		drag_origin_x = opening ? sheet_width : 0;
-		dragging = true;
-
-		drag_committed = false;
-
-		if (opening) {
-			// It has to be on screen to be dragged, even if only by a pixel.
-			lv_obj_set_hidden(player_screen, false);
-			lv_obj_move_background(player_screen);
-			lv_obj_set_x(player_screen, sheet_width);
-		}
-		return;
-	}
-
-	if (!dragging) {
-		return;
-	}
-
-	lv_point_t point;
-	lv_indev_get_point(indev, &point);
-	int dx = point.x - drag_start_point.x;
-
-	if (code == LV_EVENT_PRESSING) {
-		// Vertical scrolling must still work: the moment LVGL is scrolling
-		// something this press is a scroll, and once the movement reads as
-		// vertical it stays a scroll -- no more sideways shimmy of the page
-		// during a fast flick.
-		if (!drag_committed) {
-			if (lv_indev_get_scroll_obj(indev)) {
-				dragging = false;
-				return;
-			}
-			int dy = point.y - drag_start_point.y;
-			if (LV_ABS(dy) >= DRAG_COMMIT_PX && LV_ABS(dy) > LV_ABS(dx)) {
-				dragging = false;
-				return;
-			}
-			if (LV_ABS(dx) < DRAG_COMMIT_PX || LV_ABS(dx) < 2 * LV_ABS(dy)) {
-				return;
-			}
-			drag_committed = true;
-		}
-
-		sheet_move_to(drag_origin_x + dx, false);
-		return;
-	}
-
-	if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
-		dragging = false;
-
-		int travelled = opening ? -dx : dx;
-		bool commit = travelled > (sheet_width / SHEET_COMMIT_FRACTION);
-
-		if (opening) {
-			commit ? player_sheet_open(true) : player_sheet_close(true);
-		} else {
-			commit ? player_sheet_close(true) : player_sheet_open(true);
-		}
-
-		// The flag must not outlive the gesture. Waiting for the next PRESSED on
-		// an attached object is not enough -- the browser list is not one, so
-		// every tap on a row after a swipe would be discarded as part of a drag.
-		// Deferred rather than cleared here, because the CLICKED event of this
-		// same gesture still has to see it.
-		lv_async_call(drag_committed_clear_cb, NULL);
-	}
-}
-
 void player_sheet_attach_drag(lv_obj_t *obj, bool opening) {
 	// Minimal R1: no sideways swipe to open/close Now Playing — home tile only.
 	(void)obj;
 	(void)opening;
 }
 
-// Upward pull from the bottom band → Now Playing. Mirrors coverflow's edge
-// gesture so home can drop the Now Playing tile.
-#define PLAYER_EDGE_H 56
-#define PLAYER_EDGE_COMMIT_PX 18
-
-static bool edge_up_committed;
-
-bool player_sheet_edge_up_active(void) { return edge_up_committed; }
-
-static void edge_up_clear_cb(void *unused) {
-	(void)unused;
-	edge_up_committed = false;
-}
-
-static void edge_up_cb(lv_event_t *e) {
-	static bool tracking;
-	static bool armed;
-	static lv_point_t start;
-
-	lv_indev_t *indev = lv_indev_active();
-	if (!indev) {
-		return;
-	}
-	lv_event_code_t code = lv_event_get_code(e);
-	int band = (int)(uintptr_t)lv_event_get_user_data(e);
-
-	if (code == LV_EVENT_PRESSED) {
-		lv_indev_get_point(indev, &start);
-		tracking = !player_sheet_is_open() && start.y >= band;
-		armed = false;
-		return;
-	}
-	if (!tracking) {
-		return;
-	}
-
-	lv_point_t p;
-	lv_indev_get_point(indev, &p);
-	int dy = p.y - start.y;
-
-	if (code == LV_EVENT_PRESSING) {
-		if (!armed) {
-			if (dy >= PLAYER_EDGE_COMMIT_PX) {
-				tracking = false;
-				return;
-			}
-			int dx = p.x - start.x;
-			int adx = dx < 0 ? -dx : dx;
-			if (dy > -PLAYER_EDGE_COMMIT_PX || -dy <= adx) {
-				return;
-			}
-			armed = true;
-			edge_up_committed = true;
-		}
-		return;
-	}
-	if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
-		tracking = false;
-		if (armed) {
-			armed = false;
-			player_sheet_open(true);
-			lv_async_call(edge_up_clear_cb, NULL);
-		}
-	}
-}
+bool player_sheet_edge_up_active(void) { return false; }
 
 void player_sheet_attach_edge_up(lv_obj_t *obj, gui_config_t *cfg) {
 	// Minimal R1: no upward swipe to open Now Playing.
