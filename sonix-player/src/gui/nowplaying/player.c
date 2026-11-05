@@ -3979,8 +3979,8 @@ void player_init(gui_config_t *cfg) {
 
 	// The status bar over the player, as it was left.
 	bar_height = (int)cfg->top_bar_height;
-	// Minimal R1: status bar (and its home glyph) always stays over the player.
-	player_set_statusbar_always(true);
+	// Minimal R1: hide the status bar on the player so it never sits on the cover.
+	player_set_statusbar_always(false);
 
 	// Whichever arrangement was left selected, now that every widget it moves
 	// exists.

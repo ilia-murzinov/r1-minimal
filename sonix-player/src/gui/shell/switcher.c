@@ -20,6 +20,7 @@
 
 static lv_obj_t *back_btn;
 static lv_obj_t *back_btn_icon;
+static lv_obj_t *back_btn_shadow; // black chevron under the glyph when it sits on a cover
 
 // Chevron colour state: white only when it sits over the player's dark
 // artwork backdrop (see back_btn_over_cover / back_btn_player_mode).
@@ -653,11 +654,19 @@ void switch_screen_cb(lv_event_t *e) {
 // loaded, and the artwork backdrop is always the dark treatment, so there it
 // must be light regardless of the theme. Both halves of that condition are
 // tracked, because either can change while the other holds.
+//
+// A white glyph alone vanishes on a light sleeve, so a black copy sits one
+// pixel down and right under it for a hard drop shadow -- silhouette, not a
+// rectangular LVGL shadow of the image box.
 static void chevron_apply_color(void) {
 	if (!back_btn_icon) {
 		return;
 	}
-	if (chevron_in_player && chevron_over_cover) {
+	bool shadowed = chevron_in_player && chevron_over_cover;
+	if (back_btn_shadow) {
+		lv_obj_set_hidden(back_btn_shadow, !shadowed);
+	}
+	if (shadowed) {
 		lv_obj_set_style_image_recolor(back_btn_icon, lv_color_white(), 0);
 		lv_obj_set_style_image_recolor_opa(back_btn_icon, LV_OPA_COVER, 0);
 	} else if (!chevron_in_player && chevron_tint_screen && chevron_page == chevron_tint_screen) {
@@ -771,6 +780,14 @@ void back_btn_init(gui_config_t *cfg) {
 	lv_obj_add_event_cb(back_btn, back_btn_cb, LV_EVENT_CLICKED, NULL);
 
 	place_back_btn(true);
+
+	// Drawn first so the white chevron lands on top of it.
+	back_btn_shadow = lv_image_create(back_btn);
+	lv_image_set_src(back_btn_shadow, &icon_chevron_left);
+	lv_obj_set_style_image_recolor(back_btn_shadow, lv_color_black(), 0);
+	lv_obj_set_style_image_recolor_opa(back_btn_shadow, LV_OPA_70, 0);
+	lv_obj_align(back_btn_shadow, LV_ALIGN_CENTER, 1, 2);
+	lv_obj_set_hidden(back_btn_shadow, true);
 
 	back_btn_icon = lv_image_create(back_btn);
 	lv_image_set_src(back_btn_icon, &icon_chevron_left);
