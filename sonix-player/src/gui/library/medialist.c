@@ -15,9 +15,7 @@
 #include "src/gui/fonts/fonts.h"
 #include "src/gui/shell/gui.h"
 #include "src/gui/shell/icons.h"
-#include "src/gui/settings/musicsettings.h"
 #include "src/gui/nowplaying/player.h"
-#include "src/gui/library/playlistpage.h"
 #include "src/gui/shell/popover.h"
 #include "src/gui/shell/settingsrow.h"
 #include "src/gui/nowplaying/trackmenu.h"
@@ -351,8 +349,6 @@ typedef struct {
 	int sel_count;
 	int sel_cap;
 	lv_obj_t *sel_queue_btn;
-	lv_obj_t *sel_fav_btn;
-	lv_obj_t *sel_add_btn;
 	lv_obj_t *sel_unfav_btn;  // favourites only
 	lv_obj_t *sel_unlist_btn; // a playlist only
 	lv_obj_t *sel_close_btn;
@@ -1241,15 +1237,13 @@ static void show_if(lv_obj_t *obj, bool show) {
 
 static void window_update(panel_t *p);
 
-// Selection mode's buttons, four on every list: the queue first, close last,
-// and in between what fits the list. A playlist trades "add to a playlist" for
-// "take out of this one", the favourites trade the star for its removal.
+// Selection mode's buttons: the queue first, close last, and in between what
+// fits the list. A playlist gets "take out of this one", the favourites get the
+// star's removal.
 static void sel_buttons_show(panel_t *p, bool on) {
 	bool playlist = p->kind == LIBRARY_LIST_PLAYLIST;
 	bool favourites = p->kind == LIBRARY_LIST_FAVOURITES;
 	show_if(p->sel_queue_btn, on);
-	show_if(p->sel_fav_btn, on && !favourites);
-	show_if(p->sel_add_btn, on && !playlist);
 	show_if(p->sel_unfav_btn, on && favourites);
 	show_if(p->sel_unlist_btn, on && playlist);
 	show_if(p->sel_close_btn, on);
@@ -1533,21 +1527,6 @@ static void sel_gather(panel_t *p, path_list_t *list) {
 	selection_stop(p);
 }
 
-static void sel_add_cb(lv_event_t *e) {
-	panel_t *p = lv_event_get_user_data(e);
-	if (!p || !p->selecting || p->sel_count == 0) {
-		return;
-	}
-	path_list_t list = {NULL, 0, 0};
-	sel_gather(p, &list);
-	if (list.count == 0) {
-		gui_notify_popup("playlist_cannot_add_the_tracks");
-	} else {
-		playlistpage_add_tracks((const char *const *)list.paths, list.count);
-	}
-	path_list_free(&list);
-}
-
 // Each track where "add to queue" puts it, the first chosen first -- see
 // playlist_enqueue() -- and the queue on disk written now rather than at the
 // next track change.
@@ -1567,21 +1546,6 @@ static void sel_queue_cb(lv_event_t *e) {
 		toast_success(queued == 1 ? "added_to_the_queue" : "queue_tracks_added");
 	} else {
 		gui_notify_popup("playlist_cannot_add_the_tracks");
-	}
-	path_list_free(&list);
-}
-
-static void sel_fav_cb(lv_event_t *e) {
-	panel_t *p = lv_event_get_user_data(e);
-	if (!p || !p->selecting || p->sel_count == 0) {
-		return;
-	}
-	path_list_t list = {NULL, 0, 0};
-	sel_gather(p, &list);
-	if (list.count == 0) {
-		gui_notify_popup("favourites_cannot_add_the_tracks");
-	} else {
-		playlistpage_add_favourites((const char *const *)list.paths, list.count);
 	}
 	path_list_free(&list);
 }
@@ -3238,7 +3202,7 @@ static void play_artist(panel_t *p, bool shuffled) {
 	// shuffles is the "Continuous shuffle" option -- the plain one stops at the
 	// end of the deal, the other comes round again in the same order.
 	playback_mode_t shuffle_mode =
-		musicsettings_endless_shuffle() ? PLAYBACK_MODE_SHUFFLE_REPEAT : PLAYBACK_MODE_SHUFFLE;
+		config_get_bool("player", "endless_shuffle", false) ? PLAYBACK_MODE_SHUFFLE_REPEAT : PLAYBACK_MODE_SHUFFLE;
 	playlist_set_mode(shuffled ? shuffle_mode : PLAYBACK_MODE_NORMAL);
 
 	if (p->from_paths) {
@@ -3488,13 +3452,6 @@ static void menu_fav_action(void *user) {
 	}
 }
 
-static void menu_playlist_action(void *user) {
-	(void)user;
-	if (menu_path[0]) {
-		playlistpage_add_track(menu_path);
-	}
-}
-
 // "Add to queue": the track goes where the setting puts it, right after the one
 // playing or at the end -- see playlist_enqueue().
 //
@@ -3582,8 +3539,6 @@ static void menu_btn_cb(lv_event_t *e) {
 	// looking at it would be the wrong way round.
 	if (p->playlist[0]) {
 		items[n++] = (popover_item_t){"medialist_remove_from_playlist", menu_playlist_remove_action, NULL};
-	} else {
-		items[n++] = (popover_item_t){"add_to_playlist", menu_playlist_action, NULL};
 	}
 
 	// Only when there is an album to show, and not when this list already IS
@@ -3775,12 +3730,9 @@ static void build_panel(panel_t *p, gui_config_t *cfg, bool is_tracks, int slot_
 	p->sort_icon = lv_obj_get_child(p->sort_btn, 0);
 
 	// Selection mode's buttons, last so that they sit at the right edge: add
-	// the chosen rows to the queue, to the favourites, to a playlist, take them
-	// out of the favourites or of this playlist, and leave the mode.
-	// sel_buttons_show() picks four of them.
+	// the chosen rows to the queue, take them out of the favourites or of this
+	// playlist, and leave the mode. sel_buttons_show() picks three of them.
 	p->sel_queue_btn = corner_button(p->corner, &icon_list_queue, sel_queue_cb, p);
-	p->sel_fav_btn = corner_button(p->corner, &icon_star_plus, sel_fav_cb, p);
-	p->sel_add_btn = corner_button(p->corner, &icon_list_plus, sel_add_cb, p);
 	p->sel_unfav_btn = corner_button(p->corner, &icon_star_x, sel_unfav_cb, p);
 	p->sel_unlist_btn = corner_button(p->corner, &icon_list_x, sel_unlist_cb, p);
 	p->sel_close_btn = corner_button(p->corner, &icon_close, sel_close_cb, p);
@@ -3808,8 +3760,6 @@ static void build_panel(panel_t *p, gui_config_t *cfg, bool is_tracks, int slot_
 		lv_obj_set_hidden(p->sel_delete_btn, true);
 	}
 	lv_obj_set_hidden(p->sel_queue_btn, true);
-	lv_obj_set_hidden(p->sel_fav_btn, true);
-	lv_obj_set_hidden(p->sel_add_btn, true);
 	lv_obj_set_hidden(p->sel_close_btn, true);
 
 	p->empty = lv_label_create(p->list);
@@ -4239,8 +4189,7 @@ static void page_paint(panel_t *p) {
 	}
 
 	// Selection mode's buttons are the corner's only ones on this page.
-	lv_obj_t *corner[] = {p->sel_queue_btn, p->sel_fav_btn,	  p->sel_add_btn,
-						  p->sel_unfav_btn, p->sel_unlist_btn, p->sel_close_btn};
+	lv_obj_t *corner[] = {p->sel_queue_btn, p->sel_unfav_btn, p->sel_unlist_btn, p->sel_close_btn};
 	for (size_t i = 0; i < sizeof(corner) / sizeof(corner[0]); i++) {
 		if (corner[i]) {
 			local_color(lv_obj_get_child(corner[i], 0), LV_STYLE_IMAGE_RECOLOR, 0, t, p->tint_ink);

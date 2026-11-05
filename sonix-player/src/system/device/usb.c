@@ -23,7 +23,6 @@
 
 #include "lvgl/lvgl.h"
 
-#include "src/gui/library/browser.h"
 #include "src/gui/shell/gui.h"
 #include "src/system/audio/audio.h"
 #include "src/system/playback/device_state.h"
@@ -127,7 +126,6 @@ static void popup_disconnected_cb(void *unused) {
 	(void)unused;
 	// Covers the unplug and the PC-side eject alike.
 	gui_notify_popup("usb_storage_available_again");
-	browser_refresh(); // the PC may have changed the card content
 }
 
 static bool vbus_present(void) {

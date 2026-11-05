@@ -7,7 +7,6 @@
 
 #include "lvgl/lvgl.h"
 
-#include "src/gui/nowplaying/coverflow.h"
 #include "src/gui/fonts/fonts.h"
 #include "src/gui/nowplaying/player.h"
 #include "src/gui/shell/settingsrow.h"
@@ -21,8 +20,7 @@
 #define TILE_RADIUS 12 // Adwaita card radius
 
 static void unavailable_cb(lv_event_t *e) {
-	if (player_sheet_drag_active() || player_sheet_edge_up_active() || switcher_back_drag_active() ||
-		coverflow_drag_active()) {
+	if (player_sheet_drag_active() || player_sheet_edge_up_active() || switcher_back_drag_active()) {
 		return; // this was a swipe across the tile, not a tap on it
 	}
 
@@ -36,8 +34,7 @@ static void unavailable_cb(lv_event_t *e) {
 }
 
 static void action_cb(lv_event_t *e) {
-	if (player_sheet_drag_active() || player_sheet_edge_up_active() || switcher_back_drag_active() ||
-		coverflow_drag_active()) {
+	if (player_sheet_drag_active() || player_sheet_edge_up_active() || switcher_back_drag_active()) {
 		return; // a swipe, not a tap
 	}
 
@@ -201,8 +198,7 @@ void gridpage_set_scrolling(lv_obj_t *grid) {
 	lv_obj_set_scroll_dir(grid, LV_DIR_VER);
 	lv_obj_set_scrollbar_mode(grid, LV_SCROLLBAR_MODE_ACTIVE);
 	// No give past either end, so the page does not bounce under a pull from
-	// the bottom edge, which belongs to the album carousel
-	// (coverflow_attach_edge).
+	// the bottom edge.
 	lv_obj_set_scroll_elastic(grid, false);
 }
 

@@ -4,14 +4,11 @@
 
 #include "lvgl/lvgl.h"
 
-#include "src/gui/library/browser.h"
-#include "src/gui/nowplaying/coverflow.h"
 #include "src/gui/shell/animpark.h"
 #include "src/gui/shell/gui.h"
 #include "src/gui/shell/icons.h"
 #include "src/gui/library/libraryscan.h"
 #include "src/gui/shell/main_menu.h"
-#include "src/gui/library/music.h"
 #include "src/gui/nowplaying/player.h"
 #include "src/gui/shell/theme.h"
 #include "src/gui/shell/topbar.h"
@@ -201,9 +198,9 @@ static void back_underlay_destroy(void) {
 }
 
 // Builds what shows under the sliding page: a snapshot of the page the drag
-// goes back to. Inside a browser subfolder the "previous page" is the same
-// screen showing the parent folder -- that can't be rendered ahead of time,
-// so a plain page-coloured panel stands in.
+// goes back to. Where the "previous page" is the same screen in an earlier
+// state -- that can't be rendered ahead of time -- a plain page-coloured panel
+// stands in.
 static void back_underlay_build(void) {
 	back_underlay_destroy();
 
@@ -220,13 +217,11 @@ static void back_underlay_build(void) {
 
 	lv_obj_t *target = NULL;
 	bool going_to_player = false;
-	if (lv_screen_active() == browser_screen && browser_can_go_up()) {
-		target = NULL; // parent folder: no ready-made page to show
-	} else if (back_stays_in_page()) {
+	if (back_stays_in_page()) {
 		// The step back stays on this same page (a list's internal stack:
 		// episodes returning to results, results returning to the chips). What
 		// will be there is not drawn anywhere yet, so the neutral panel goes
-		// underneath, as for a browser folder. Using the top of the global
+		// underneath. Using the top of the global
 		// history here would show one page under the finger and land on a
 		// different one at release.
 		target = NULL;
@@ -299,7 +294,7 @@ static void back_anim_exec_cb(void *var, int32_t v) {
 
 static void back_anim_commit_done_cb(lv_anim_t *a) {
 	lv_obj_t *screen = (lv_obj_t *)a->var;
-	back_btn_cb(NULL); // pops history / walks the browser up, loads the page below
+	back_btn_cb(NULL); // pops history, loads the page below
 	lv_obj_set_x(screen, 0);
 	back_btn_set_drag_offset(0);
 	back_underlay_destroy();
@@ -509,12 +504,6 @@ static void load_screen(lv_obj_t *target_screen) {
 	chevron_apply_color();
 	topbar_page_shown(target_screen);
 
-	// Re-read the folder on the way in: the card may have finished mounting
-	// (or changed) since the browser last looked at it.
-	if (target_screen == browser_screen) {
-		browser_refresh();
-	}
-
 	// Opening the scan page is the request to scan.
 	if (target_screen == libraryscan_screen) {
 		libraryscan_begin();
@@ -635,12 +624,6 @@ void back_btn_cb(lv_event_t *e) {
 		return;
 	}
 
-	// Inside the file browser the chevron is also what walks back up the
-	// directory tree; it only leaves the page once there's nowhere left to go.
-	if (lv_screen_active() == browser_screen && browser_go_up()) {
-		return;
-	}
-
 	// A page opened from the player's own menu: leaving it goes back INTO
 	// the player, over whatever page the sheet had originally slid across.
 	if (back_goes_to_player()) {
@@ -657,7 +640,7 @@ void back_btn_cb(lv_event_t *e) {
 
 void switch_screen_cb(lv_event_t *e) {
 	// A swipe that started on this button is a swipe, not a tap.
-	if (player_sheet_drag_active() || switcher_back_drag_active() || coverflow_drag_active()) {
+	if (player_sheet_drag_active() || switcher_back_drag_active()) {
 		return;
 	}
 

@@ -11,9 +11,7 @@
 #include "src/gui/shell/icons.h"
 #include "src/gui/library/medialist.h"
 #include "src/gui/nowplaying/player.h"
-#include "src/gui/library/playlistpage.h"
 #include "src/gui/shell/popover.h"
-#include "src/gui/settings/musicsettings.h"
 #include "src/gui/shell/settingsrow.h"
 #include "src/gui/shell/switcher.h"
 #include "src/gui/shell/theme.h"
@@ -1676,20 +1674,6 @@ static void open_details_cb(void *user) {
 	switcher_set_player_return(details_screen);
 }
 
-// "Add to playlist" for the track the player has loaded: the same picker the
-// library lists open, on the playing file.
-static void add_to_playlist_cb(void *user) {
-	(void)user;
-	device_state_t state;
-	device_state_get(&state);
-	if (!state.current_file[0]) {
-		return;
-	}
-	player_sheet_close(false);
-	playlistpage_add_track(state.current_file);
-	switcher_set_player_return(playlistpage_screen);
-}
-
 // "Show album": the record the playing track came off. Backing out of it
 // returns to the player, like everything else this menu opens.
 static void open_album_cb(void *user) {
@@ -1716,13 +1700,6 @@ static void open_album_cb(void *user) {
 	}
 }
 
-static void open_settings_cb(void *user) {
-	(void)user;
-	player_sheet_close(false);
-	switch_screen(musicsettings_screen);
-	switcher_set_player_return(musicsettings_screen);
-}
-
 // Public: the details page for a specific file, from a library list's menu.
 // NOT from the player, so backing out returns to the list, not the sheet.
 void trackmenu_details_open(const char *path) {
@@ -1737,12 +1714,10 @@ void trackmenu_details_open(const char *path) {
 void trackmenu_open(lv_obj_t *anchor) {
 	static const popover_item_t ITEMS[] = {
 		{"trackmenu_queue", open_queue_cb, NULL},
-		{"add_to_playlist", add_to_playlist_cb, NULL},
 		{"show_album", open_album_cb, NULL},
 		{"details", open_details_cb, NULL},
-		{"settings", open_settings_cb, NULL},
 	};
-	popover_show(anchor, ITEMS, 5);
+	popover_show(anchor, ITEMS, 3);
 }
 
 void trackmenu_init(gui_config_t *cfg) {

@@ -8,45 +8,23 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "src/gui/library/browser.h"
-#include "src/gui/nowplaying/coverflow.h"
 #include "src/gui/bluetooth/airpodspage.h"
-#include "src/gui/settings/appearance.h"
 #include "src/gui/bluetooth/btaudio.h"
 #include "src/gui/bluetooth/btsettings.h"
 #include "src/gui/shell/confirm.h"
 #include "src/gui/shell/corners.h"
-#include "src/gui/settings/bootlogopage.h"
-#include "src/gui/settings/kblayoutpage.h"
-#include "src/gui/settings/screensaver.h"
-#include "src/gui/settings/devoptions.h"
-#include "src/gui/settings/processespage.h"
-#include "src/gui/settings/language.h"
 #include "src/gui/library/libraryscan.h"
 #include "src/gui/shell/lowbattery.h"
 #include "src/gui/shell/main_menu.h"
 #include "src/gui/library/medialist.h"
 #include "src/gui/shell/popover.h"
 #include "src/gui/nowplaying/trackmenu.h"
-#include "src/gui/library/music.h"
-#include "src/gui/audio/eqsettings.h"
-#include "src/gui/audio/peqsettings.h"
-#include "src/gui/settings/remap.h"
-#include "src/gui/audio/msebsettings.h"
-#include "src/gui/settings/musicsettings.h"
 #include "src/gui/nowplaying/player.h"
-#include "src/gui/library/playlistpage.h"
-#include "src/gui/settings/powersettings.h"
 #include "src/gui/shell/powermenu.h"
 #include "src/gui/bluetooth/btreceiverpage.h"
 #include "src/system/bluetooth/btreceiver.h"
 #include "src/system/audio/usbdac.h"
-#include "src/gui/library/search.h"
-#include "src/gui/settings/settings.h"
-#include "src/gui/settings/systempage.h"
-#include "src/gui/shell/welcome.h"
 #include "src/gui/shell/switcher.h"
-#include "src/gui/settings/timeset.h"
 #include "src/gui/fonts/fonts.h"
 #include "src/gui/shell/icons.h"
 #include "src/gui/shell/theme.h"
@@ -553,19 +531,8 @@ void gui_init(gui_config_t *cfg) {
 	lv_obj_set_scrollbar_mode(lv_layer_top(), LV_SCROLLBAR_MODE_OFF);
 
 	main_menu_screen = lv_obj_create(NULL);
-	music_screen = lv_obj_create(NULL);
 	player_screen = lv_obj_create(lv_layer_top()); // a sheet, not a page: see player.h
-	browser_screen = lv_obj_create(NULL);
-	settings_screen = lv_obj_create(NULL);
-	devoptions_screen = lv_obj_create(NULL);
-	processespage_screen = lv_obj_create(NULL);
-	systempage_screen = lv_obj_create(NULL);
-	sysinfo_screen = lv_obj_create(NULL);
 	libraryscan_screen = lv_obj_create(NULL);
-	musicsettings_screen = lv_obj_create(NULL);
-	powersettings_screen = lv_obj_create(NULL);
-	appearance_screen = lv_obj_create(NULL);
-	language_screen = lv_obj_create(NULL);
 	medialist_screen = lv_obj_create(NULL);
 	medialist_tracks_screen = lv_obj_create(NULL);
 	medialist_albums_screen = lv_obj_create(NULL);
@@ -582,20 +549,11 @@ void gui_init(gui_config_t *cfg) {
 	// Persistent back button that hides when on the main page
 	back_btn_init(cfg);
 
-	// Before the settings pages: the display page draws its screensaver switch
-	// from screensaver_get_enabled(), which is only true once this has read the
-	// config. Built the other way round, a screensaver saved as on comes up
-	// showing an off switch.
-	screensaver_init(cfg);
-
-	// The rounded screen corners, if they are on: above everything, including
-	// the screensaver, which is why they live on the system layer.
+	// The rounded screen corners, if they are on: above everything, which is
+	// why they live on the system layer.
 	corners_init(cfg);
 
 	main_menu_init(cfg);
-
-	music_init(cfg);
-	coverflow_init(cfg);
 
 	airpodspage_init(cfg);		 // before btaudio: its AirPods row points at this page
 	btaudio_init(cfg);			 // before btsettings: its gear points at this page
@@ -604,35 +562,13 @@ void gui_init(gui_config_t *cfg) {
 
 	player_init(cfg);
 
-	browser_init(cfg);
-
-	// remap_init before settings_init: the key-remap row carries the pointer to
-	// its screen, which has to exist already. The control centre's order page
-	// is reached from the same page and has to exist for the same reason.
-	remap_init(cfg);
-	kblayoutpage_init(cfg); // the keyboard-language row on the same page
-	settings_init(cfg);
-	devoptions_init(cfg);
-	processespage_init(cfg); // the processes page the devoptions entry opens
-	// after devoptions: the system entry opens the page that can unlock it
-	systempage_init(cfg);
-	bootlogopage_init(cfg); // before appearance: its row carries the screen
-	appearance_init(cfg);
-	language_init(cfg);
 	libraryscan_init(cfg);
-	msebsettings_init(cfg); // before musicsettings: the MSEB page hangs its gear off it
-	eqsettings_init(cfg);	// and the equalizer page hangs its own off this
-	peqsettings_init(cfg); // the parametric page hangs its preset screen off the gear
-	musicsettings_init(cfg);
-	search_init(cfg);
 	medialist_init(cfg);
-	playlistpage_init(cfg);
 	trackmenu_init(cfg);
 
 	// The leftward swipe that pulls the player in: browsing pages only.
 	lv_obj_t *const player_swipe_screens[] = {
-		main_menu_screen,		 music_screen,		browser_screen,		medialist_screen,
-		medialist_tracks_screen, medialist_albums_screen,
+		main_menu_screen, medialist_screen, medialist_tracks_screen, medialist_albums_screen,
 	};
 	for (size_t i = 0; i < sizeof(player_swipe_screens) / sizeof(player_swipe_screens[0]); i++) {
 		player_sheet_attach_drag(player_swipe_screens[i], true);
@@ -640,9 +576,7 @@ void gui_init(gui_config_t *cfg) {
 
 	// The rightward swipe-back works everywhere a page can go back from.
 	lv_obj_t *const back_swipe_screens[] = {
-		main_menu_screen, music_screen, browser_screen, settings_screen,
-		devoptions_screen, processespage_screen, musicsettings_screen, powersettings_screen, appearance_screen,
-		language_screen,
+		main_menu_screen,
 		medialist_screen, medialist_tracks_screen, medialist_albums_screen,
 		queue_screen, details_screen,
 		btsettings_screen, btaudio_screen, airpodspage_screen,
@@ -652,17 +586,9 @@ void gui_init(gui_config_t *cfg) {
 	}
 
 	popover_init(); // last: its veil must sit above the other top-layer chrome
-	powersettings_init(cfg);
 	confirm_init(cfg);
 	toast_init(cfg);
 	lowbattery_init(cfg);
-
-	// The screensaver is drawn both when the panel goes dark (so the wake opens
-	// on it rather than on the page) and when it lights up again; and the
-	// player tells it to let go of the artwork before freeing it, because a
-	// track can change while the screensaver sits behind a blanked panel.
-	power_set_wake_hook(screensaver_prepare);
-	player_set_cover_release_cb(screensaver_release_artwork);
 
 	// The notice card: the interface's card style, wrapping, and only as tall
 	// as what it has to say.
@@ -725,29 +651,6 @@ void gui_init(gui_config_t *cfg) {
 	// Volume HUD and the power menu, both above every page.
 	volume_overlay_init(cfg);
 	powermenu_init(cfg);
-
-	// On a first boot the clock panel comes straight up over everything else:
-	// with no network and an RTC that has never been written, the player has no
-	// way to know the time, and nothing it timestamps can be trusted until it
-	// does.
-	timeset_init(cfg);
-
-	// A player that has never run asks two questions, in this order: which
-	// language, then what time it is. That way the clock panel is already in
-	// the language just chosen -- and being asked to dial in a date in a
-	// language you cannot read is a poor way to meet a device. Confirming the
-	// language brings the clock up itself, so the two only chain here on the
-	// path where the language has already been answered before.
-	welcome_init(cfg);
-
-	// Ahead of everything else, and only on a device that has never been booted:
-	// the greeting. Its button opens the language picker itself, which in turn
-	// opens the clock, so only the first door is entered from here.
-	if (language_needed()) {
-		welcome_show_first_boot();
-	} else if (timeset_needed()) {
-		timeset_show();
-	}
 
 	switch_screen(main_menu_screen);
 }

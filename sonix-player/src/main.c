@@ -21,8 +21,6 @@
 #include "src/gui/fonts/fonts.h"
 #include "src/gui/shell/gui.h"
 #include "src/gui/nowplaying/player.h"
-#include "src/gui/settings/powersettings.h"
-#include "src/gui/settings/settings.h"
 #include "src/system/device/adb.h"
 #include "src/system/audio/alsa-controls.h"
 #include "src/system/playback/sleeptimer.h"
@@ -36,6 +34,7 @@
 #include "src/system/device/factoryreset.h"
 #include "src/system/core/config.h"
 #include "src/system/core/lang.h"
+#include "src/system/device/axpcharge.h"
 #include "src/system/device/led.h"
 #include "src/system/audio/eq.h"
 #include "src/system/audio/headset.h"
@@ -1815,6 +1814,84 @@ static void limit_realtime_share(void) {
 }
 #endif
 
+// What the Settings > Power and Screen pages used to push into the power
+// manager at startup. The pages are gone from the minimal build, the saved
+// values are not: they are read here with the same defaults and clamping, so
+// the unit behaves as it did with the pages present.
+static int config_screen_off_seconds(void) {
+	static const int steps[] = {0, 15, 30, 60, 120, 300};
+	int seconds = config_get_int("power", "screen_off_seconds", 30);
+	for (size_t i = 0; i < sizeof(steps) / sizeof(steps[0]); i++) {
+		if (steps[i] == seconds) {
+			return seconds;
+		}
+	}
+	return 30;
+}
+
+static int config_auto_off_minutes(void) {
+	static const int steps[] = {15, 30, 60, 120, 180, 360};
+	int minutes = config_get_int("power", "auto_off_minutes", 30);
+	for (size_t i = 0; i < sizeof(steps) / sizeof(steps[0]); i++) {
+		if (steps[i] == minutes) {
+			return minutes;
+		}
+	}
+	return 30;
+}
+
+// A wait saved by hand that is not a step lands on the next one up, or on the
+// longest.
+static int config_standby_seconds(void) {
+	static const int steps[] = {60, 180, 300, 600};
+	int seconds = config_get_int("power", "standby_mem_seconds", 60);
+	for (size_t i = 0; i < sizeof(steps) / sizeof(steps[0]); i++) {
+		if (seconds <= steps[i]) {
+			return steps[i];
+		}
+	}
+	return steps[sizeof(steps) / sizeof(steps[0]) - 1];
+}
+
+static void apply_saved_power_config(void) {
+	if (axpcharge_applies()) {
+		// The R1 has no percentage slider: a percentage limit saved on it
+		// becomes the 80 % switch.
+		if (config_get_int("power", "charge_limit", 100) < 100) {
+			config_set_int("power", "charge_limit", 100);
+			config_set_bool("power", "charge_limit_80", true);
+			config_save();
+		}
+		power_set_charge_limit(100);
+		axpcharge_set(config_get_bool("power", "charge_limit_80", false),
+					  config_get_bool("power", "charge_500ma", false));
+	} else {
+		int percent = config_get_int("power", "charge_limit", 100);
+		int step = (percent - 80) / 5;
+		step = step < 0 ? 0 : (step > 4 ? 4 : step);
+		power_set_charge_limit(80 + step * 5);
+	}
+
+	power_set_auto_off(config_get_bool("power", "auto_off", false), (uint32_t)config_auto_off_minutes());
+
+	// Suspend-to-RAM standby, on by default: saves battery by suspending the
+	// player shortly after the screen goes off.
+	power_set_standby_enabled(config_get_bool("power", "standby_mem", true));
+	power_set_standby_after((uint32_t)config_standby_seconds());
+
+	// The LED master switch comes first: with it off there is nothing for the
+	// standby option to turn off, and led.c keeps the charge indicator alive
+	// on its own regardless.
+	led_set_enabled(config_get_bool("power", "led_on", true));
+	led_set_idle_off(config_get_bool("power", "led_off_standby", true));
+
+	input_set_key_lock(config_get_bool("power", "lock_keys_screen_off", false));
+
+	int screen_off = config_screen_off_seconds();
+	power_set_screen_off_timeout((uint32_t)screen_off * 1000);
+	power_set_screen_off_enabled(screen_off > 0);
+}
+
 int main(int argc, char **argv) {
 	// On this device dying means rebooting (see above).
 	install_signal_guards();
@@ -2229,10 +2306,9 @@ int main(int argc, char **argv) {
 
 	power_init(&power_cfg, disp);
 
-	// Charge limit, automatic shutdown and standby, as they were left. The
-	// screen timeout is the Screen page's setting and comes from there.
-	powersettings_apply();
-	settings_apply_screen_off();
+	// Charge limit, automatic shutdown, standby and the screen timeout, as the
+	// config has them. There is no Settings UI in this build to push them.
+	apply_saved_power_config();
 
 #ifndef HOST_BUILD
 	// Bluetooth off. A firmware whose /etc/init.d/S80_bt_init has not been

@@ -5,7 +5,6 @@
 #include "src/gui/fonts/fonts.h"
 #include "src/gui/shell/icons.h"
 #include "src/gui/nowplaying/player.h"
-#include "src/gui/settings/screensaver.h"
 #include "src/gui/shell/theme.h"
 #include "src/system/audio/alsa-controls.h"
 
@@ -122,11 +121,7 @@ static bool allowed_outside_player;
 void volume_overlay_allow_outside_player(bool allow) { allowed_outside_player = allow; }
 
 void volume_overlay_show(int percent) {
-	// The screensaver is the third place with no status bar, and the one where
-	// the level is most likely to be moved: the screen has just lit up, the
-	// music is playing, and the keys are the only thing being touched.
-	bool over_saver = screensaver_is_visible();
-	if (!overlay || !(player_sheet_is_open() || allowed_outside_player || over_saver)) {
+	if (!overlay || !(player_sheet_is_open() || allowed_outside_player)) {
 		return;
 	}
 

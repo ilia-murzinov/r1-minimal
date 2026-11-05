@@ -7,7 +7,6 @@
 #include <string.h>
 #include <sys/stat.h>
 
-#include "src/gui/library/browser.h"
 #include "src/gui/nowplaying/cover.h"
 #include "src/gui/nowplaying/coverloader.h"
 #include "src/gui/library/medialist.h"
@@ -2694,7 +2693,6 @@ static void refresh_now_playing(void) {
 	// album and artist it belongs to). This is the one place every track
 	// change goes through, so it is where they are told.
 	medialist_notify_now_playing();
-	browser_notify_now_playing();
 	trackmenu_notify_now_playing();
 
 	// Wind the progress display back to the start straight away, so the bar
