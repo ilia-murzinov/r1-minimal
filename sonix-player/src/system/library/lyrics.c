@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "src/system/device/system.h"
 #include "src/system/library/metadata.h"
 
 #define LYRICS_FILE_MAX (256 * 1024)
@@ -138,30 +139,84 @@ static char *read_text_file(const char *path) {
 // ---------------------------------------------------------------------------
 
 // "<dir>/<name>.<ext>", with a name that cannot hold a slash.
-static char *read_beside(const char *path, const char *name, size_t name_len, const char *ext) {
-	if (name_len == 0 || memchr(name, '/', name_len)) {
+static char *read_in_dir(const char *dir, const char *name, size_t name_len, const char *ext) {
+	if (!dir || !dir[0] || name_len == 0 || memchr(name, '/', name_len)) {
 		return NULL;
 	}
-	const char *slash = strrchr(path, '/');
-	size_t dir_len = slash ? (size_t)(slash - path) : 0;
 	char candidate[1024];
-	int n = snprintf(candidate, sizeof(candidate), "%.*s%s%.*s.%s", (int)dir_len, path, slash ? "/" : "", (int)name_len,
-					 name, ext);
+	int n = snprintf(candidate, sizeof(candidate), "%s/%.*s.%s", dir, (int)name_len, name, ext);
 	if (n <= 0 || (size_t)n >= sizeof(candidate)) {
 		return NULL;
 	}
 	return read_text_file(candidate);
 }
 
-static char *read_by_names(const char *path, const char *title, const char *ext) {
+// Sidecar next to the track: same directory as `path`.
+static char *read_beside(const char *path, const char *name, size_t name_len, const char *ext) {
+	if (name_len == 0 || memchr(name, '/', name_len)) {
+		return NULL;
+	}
+	const char *slash = strrchr(path, '/');
+	size_t dir_len = slash ? (size_t)(slash - path) : 0;
+	char dir[1024];
+	if (dir_len >= sizeof(dir)) {
+		return NULL;
+	}
+	if (dir_len == 0) {
+		dir[0] = '.';
+		dir[1] = '\0';
+	} else {
+		memcpy(dir, path, dir_len);
+		dir[dir_len] = '\0';
+	}
+	return read_in_dir(dir, name, name_len, ext);
+}
+
+static void track_base(const char *path, const char **base_out, size_t *len_out) {
 	const char *slash = strrchr(path, '/');
 	const char *base = slash ? slash + 1 : path;
 	const char *dot = strrchr(base, '.');
-	size_t base_len = dot && dot != base ? (size_t)(dot - base) : strlen(base);
+	*base_out = base;
+	*len_out = dot && dot != base ? (size_t)(dot - base) : strlen(base);
+}
+
+static char *read_by_names(const char *path, const char *title, const char *ext) {
+	const char *base;
+	size_t base_len;
+	track_base(path, &base, &base_len);
 
 	char *text = read_beside(path, base, base_len, ext);
 	if (!text && title && title[0]) {
 		text = read_beside(path, title, strlen(title), ext);
+	}
+	return text;
+}
+
+// Card-root Lyrics/: basename, title, then "Artist - Title".
+static char *read_central(const char *path, const char *title, const char *artist, const char *ext) {
+	const char *root = storage_sd_root();
+	if (!root || !root[0]) {
+		return NULL;
+	}
+	char dir[512];
+	if (snprintf(dir, sizeof(dir), "%s/Lyrics", root) >= (int)sizeof(dir)) {
+		return NULL;
+	}
+
+	const char *base;
+	size_t base_len;
+	track_base(path, &base, &base_len);
+
+	char *text = read_in_dir(dir, base, base_len, ext);
+	if (!text && title && title[0]) {
+		text = read_in_dir(dir, title, strlen(title), ext);
+	}
+	if (!text && artist && artist[0] && title && title[0]) {
+		char combo[512];
+		int n = snprintf(combo, sizeof(combo), "%s - %s", artist, title);
+		if (n > 0 && (size_t)n < sizeof(combo)) {
+			text = read_in_dir(dir, combo, (size_t)n, ext);
+		}
 	}
 	return text;
 }
@@ -389,13 +444,16 @@ static bool parse(char *text, lyrics_t *out) {
 
 // ---------------------------------------------------------------------------
 
-bool lyrics_load(const char *path, const char *title, lyrics_t *out) {
+bool lyrics_load(const char *path, const char *title, const char *artist, lyrics_t *out) {
 	memset(out, 0, sizeof(*out));
 	if (!path || !path[0]) {
 		return false;
 	}
 
 	char *text = read_by_names(path, title, "lrc");
+	if (!text) {
+		text = read_central(path, title, artist, "lrc");
+	}
 	if (!text) {
 		text = metadata_read_lyrics(path);
 		if (text) {
@@ -407,6 +465,9 @@ bool lyrics_load(const char *path, const char *title, lyrics_t *out) {
 	}
 	if (!text) {
 		text = read_by_names(path, title, "txt");
+	}
+	if (!text) {
+		text = read_central(path, title, artist, "txt");
 	}
 	if (!text) {
 		return false;

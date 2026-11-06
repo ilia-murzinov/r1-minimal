@@ -1013,6 +1013,7 @@ typedef struct {
 	unsigned generation;
 	char path[1024];
 	char title[256];
+	char artist[256];
 	lyrics_t lyrics;
 	bool found;
 } lyrics_job_t;
@@ -1035,7 +1036,7 @@ static void lyrics_arrived(void *user) {
 
 static void *lyrics_worker(void *arg) {
 	lyrics_job_t *job = arg;
-	job->found = lyrics_load(job->path, job->title, &job->lyrics);
+	job->found = lyrics_load(job->path, job->title, job->artist, &job->lyrics);
 	if (!gui_post(lyrics_arrived, job)) {
 		lyrics_free(&job->lyrics);
 		free(job);
@@ -1087,6 +1088,7 @@ static void lyrics_request(const device_state_t *state) {
 	job->generation = lyrics_generation;
 	snprintf(job->path, sizeof(job->path), "%s", state->current_file);
 	snprintf(job->title, sizeof(job->title), "%s", state->metadata.title);
+	snprintf(job->artist, sizeof(job->artist), "%s", metadata_shown_artist(&state->metadata));
 	pthread_t thread;
 	if (pthread_create(&thread, NULL, lyrics_worker, job) == 0) {
 		pthread_detach(thread);

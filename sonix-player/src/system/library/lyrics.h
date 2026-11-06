@@ -8,9 +8,11 @@
 //
 // Looked for in this order, the first found wins:
 //
-//   1. "<file name>.lrc" beside the track, then "<title>.lrc";
-//   2. the lyrics the file carries (metadata_read_lyrics());
-//   3. "<file name>.txt", then "<title>.txt".
+//   1. beside the track: "<file name>.lrc", then "<title>.lrc";
+//   2. card-root Lyrics/: same names, then "<artist> - <title>.lrc";
+//   3. the lyrics the file carries (metadata_read_lyrics());
+//   4. beside the track: "<file name>.txt", then "<title>.txt";
+//   5. Lyrics/: same names, then "<artist> - <title>.txt".
 //
 // The text may be LRC, with [mm:ss.xx] stamps and an [offset:] tag, in which
 // case the lines are timed and sorted by time; otherwise every line is kept as
@@ -29,10 +31,11 @@ typedef struct {
 	char *arena; // the text every line points into
 } lyrics_t;
 
-// Reads the lyrics of `path`. `title` is the track's title, for the files
-// named after it; NULL or empty to look only by file name. False, with `out`
-// empty, when there are none. Reads the card: not on the interface thread.
-bool lyrics_load(const char *path, const char *title, lyrics_t *out);
+// Reads the lyrics of `path`. `title` / `artist` name sidecar files (beside
+// the track and under <sd>/Lyrics/); NULL or empty skips that form. False,
+// with `out` empty, when there are none. Reads the card: not on the interface
+// thread.
+bool lyrics_load(const char *path, const char *title, const char *artist, lyrics_t *out);
 
 void lyrics_free(lyrics_t *lyrics);
 

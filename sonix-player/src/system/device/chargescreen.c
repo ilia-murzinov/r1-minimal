@@ -220,11 +220,9 @@ static long now_ms(void) {
 // ---------------------------------------------------------------------------
 // Drawing
 //
-// assets/icons/battery-device-off.svg standing in the middle of the screen,
-// green from the bottom to the level, the bolt of zap-device-off.svg in yellow
-// over it, and the percentage under it in the interface's bold font. Both
-// icons are drawn here from their geometry, in their own 24-unit boxes, with
-// antialiased edges; every size is scaled from a 480-pixel-wide screen.
+// Same cue as the status bar's top-right: charge percent, then a small zap.
+// No battery shell. Geometry scaled from a 480-pixel-wide screen; padding and
+// type size match the bar (16 px pad, 24 px text, ~18 px zap).
 // ---------------------------------------------------------------------------
 
 typedef struct {
@@ -238,18 +236,10 @@ typedef struct {
 	uint8_t r, g, b;
 } rgb_t;
 
-static const rgb_t OUTLINE = {255, 255, 255};
-static const rgb_t FILL = {1, 219, 17};
-static const rgb_t BOLT = {255, 204, 0};
-static const rgb_t TEXT = {255, 255, 255};
-
-// Pixels per icon unit for the battery on a 480-pixel-wide screen, and the
-// bolt's height as a share of the body's.
-#define BATTERY_UNIT_PX 14.0f
-#define BOLT_SCALE 0.42f
+static const rgb_t INK = {255, 255, 255};
 
 // The bolt's outline, from tools/charge_zap.py. The icon strokes it 2 units
-// wide with round joins, on top of the fill.
+// wide with round joins, on top of the fill. Same shape as icon_zap.
 static const float ZAP_POINTS[][2] = {
 	{15.914f, 4.000f}, {15.990f, 3.336f}, {15.771f, 2.705f}, {15.300f, 2.232f}, {14.670f, 2.011f}, {14.006f, 2.084f}, {13.440f, 2.439f}, {4.440f, 11.439f}, {4.115f, 11.926f}, {4.000f, 12.500f}, {4.114f, 13.074f}, {4.439f, 13.560f}, {4.926f, 13.886f}, {5.500f, 14.000f}, {9.502f, 14.000f}, {9.658f, 14.025f}, {9.799f, 14.098f}, {9.910f, 14.211f}, {9.979f, 14.353f}, {10.001f, 14.510f}, {9.973f, 14.666f}, {8.086f, 20.000f}, {8.010f, 20.664f}, {8.229f, 21.295f}, {8.701f, 21.768f}, {9.331f, 21.990f}, {9.995f, 21.915f}, {10.561f, 21.560f}, {19.561f, 12.560f}, {19.886f, 12.073f}, {20.000f, 11.499f}, {19.885f, 10.926f}, {19.560f, 10.439f}, {19.074f, 10.114f}, {18.500f, 10.000f}, {14.503f, 10.000f}, {14.346f, 9.975f}, {14.205f, 9.902f}, {14.094f, 9.789f}, {14.024f, 9.646f}, {14.002f, 9.489f}, {14.031f, 9.333f},
 };
@@ -290,70 +280,6 @@ static void blend(const canvas_t *cv, int x, int y, rgb_t c, int a) {
 	}
 }
 
-typedef struct {
-	float cx, cy; // centre
-	float hw, hh; // half width and half height
-	float r;	  // corner radius
-} rrect_t;
-
-// How much of the pixel at (x, y) lies inside `rr`, 0 to 1: from the signed
-// distance of its centre to the rounded rectangle.
-static float rrect_cover(const rrect_t *rr, int x, int y) {
-	float qx = fabsf((float)x + 0.5f - rr->cx) - (rr->hw - rr->r);
-	float qy = fabsf((float)y + 0.5f - rr->cy) - (rr->hh - rr->r);
-	float ox = qx > 0 ? qx : 0;
-	float oy = qy > 0 ? qy : 0;
-	float inside = qx > qy ? qx : qy;
-	float d = sqrtf(ox * ox + oy * oy) + (inside < 0 ? inside : 0) - rr->r;
-	float cover = 0.5f - d;
-	return cover < 0 ? 0 : (cover > 1 ? 1 : cover);
-}
-
-static void rrect_bounds(const rrect_t *rr, int *x0, int *y0, int *x1, int *y1) {
-	*x0 = (int)floorf(rr->cx - rr->hw) - 1;
-	*y0 = (int)floorf(rr->cy - rr->hh) - 1;
-	*x1 = (int)ceilf(rr->cx + rr->hw) + 1;
-	*y1 = (int)ceilf(rr->cy + rr->hh) + 1;
-}
-
-static void fill_rrect(const canvas_t *cv, const rrect_t *rr, rgb_t c) {
-	int x0, y0, x1, y1;
-	rrect_bounds(rr, &x0, &y0, &x1, &y1);
-	for (int y = y0; y <= y1; y++) {
-		for (int x = x0; x <= x1; x++) {
-			blend(cv, x, y, c, (int)(rrect_cover(rr, x, y) * 255.0f + 0.5f));
-		}
-	}
-}
-
-// The ring between `outer` and `inner`.
-static void stroke_rrect(const canvas_t *cv, const rrect_t *outer, const rrect_t *inner, rgb_t c) {
-	int x0, y0, x1, y1;
-	rrect_bounds(outer, &x0, &y0, &x1, &y1);
-	for (int y = y0; y <= y1; y++) {
-		for (int x = x0; x <= x1; x++) {
-			float cover = rrect_cover(outer, x, y) - rrect_cover(inner, x, y);
-			blend(cv, x, y, c, (int)(cover * 255.0f + 0.5f));
-		}
-	}
-}
-
-// `rr` from `top` down: the fill of a battery `top` pixels into it.
-static void fill_rrect_below(const canvas_t *cv, const rrect_t *rr, float top, rgb_t c) {
-	int x0, y0, x1, y1;
-	rrect_bounds(rr, &x0, &y0, &x1, &y1);
-	for (int y = y0; y <= y1; y++) {
-		float below = (float)y + 1.0f - top;
-		float rows = below < 0 ? 0 : (below > 1 ? 1 : below);
-		if (rows <= 0) {
-			continue;
-		}
-		for (int x = x0; x <= x1; x++) {
-			blend(cv, x, y, c, (int)(rrect_cover(rr, x, y) * rows * 255.0f + 0.5f));
-		}
-	}
-}
-
 // How far (x, y) is from the bolt's outline, negative inside it, in units.
 static float zap_distance(float x, float y) {
 	float best = 1e9f;
@@ -391,10 +317,9 @@ static void draw_zap(const canvas_t *cv, float ox, float oy, float k, rgb_t c) {
 	}
 }
 
-// `text` centred on `cx`, its baseline at `baseline`. Nothing without a font.
-static void draw_text(const canvas_t *cv, const char *text, int px, int cx, int baseline, rgb_t c) {
+static int text_width(const char *text, int px) {
 	if (!ft_face || FT_Set_Pixel_Sizes(ft_face, 0, (FT_UInt)px) != 0) {
-		return;
+		return 0;
 	}
 	int width = 0;
 	for (const char *p = text; *p; p++) {
@@ -402,7 +327,14 @@ static void draw_text(const canvas_t *cv, const char *text, int px, int cx, int 
 			width += (int)(ft_face->glyph->advance.x >> 6);
 		}
 	}
-	int pen = cx - width / 2;
+	return width;
+}
+
+// `text` with its left edge at `pen`, baseline at `baseline`.
+static void draw_text_at(const canvas_t *cv, const char *text, int px, int pen, int baseline, rgb_t c) {
+	if (!ft_face || FT_Set_Pixel_Sizes(ft_face, 0, (FT_UInt)px) != 0) {
+		return;
+	}
 	for (const char *p = text; *p; p++) {
 		if (FT_Load_Char(ft_face, (unsigned char)*p, FT_LOAD_RENDER) != 0) {
 			continue;
@@ -431,38 +363,36 @@ static void draw_page(const canvas_t *cv, int percent) {
 	}
 
 	float u = (float)cv->w / 480.0f;
-	float k = BATTERY_UNIT_PX * u;
-	float cx = (float)cv->w / 2.0f;
-	float cy = (float)cv->h * 0.42f; // where the body's centre goes
+	int pad = (int)lroundf(16.0f * u);
+	int font_px = (int)lroundf(24.0f * u);
+	int gap = (int)lroundf(8.0f * u);
+	// Top bar: icon_zap scaled 34 → ~18 px. The drawn bolt spans 2..22 of 24.
+	float kz = 18.0f * u / 24.0f;
 
-	// The icon's box is 24 x 24 units with the body's centre at (12, 14): a
-	// 12 x 16 rectangle at (6, 6) with corners of 2, stroked 2 wide, and the
-	// cap, the line from (10, 2) to (14, 2) stroked 2 wide with round ends.
-	float ox = cx - 12 * k, oy = cy - 14 * k;
-	rrect_t body = {ox + 12 * k, oy + 14 * k, 7 * k, 9 * k, 3 * k};
-	rrect_t hollow = {body.cx, body.cy, 5 * k, 7 * k, 1 * k};
-	rrect_t cap = {ox + 12 * k, oy + 2 * k, 3 * k, 1 * k, 1 * k};
-	rrect_t inside = {body.cx, body.cy, hollow.hw - 0.9f * k, hollow.hh - 0.9f * k, 0.4f * k};
-
-	fill_rrect(cv, &cap, OUTLINE);
-	stroke_rrect(cv, &body, &hollow, OUTLINE);
-
-	if (percent > 0) {
-		float level = inside.hh * 2.0f * (float)percent / 100.0f;
-		if (level < 3 * u) {
-			level = 3 * u;
-		}
-		fill_rrect_below(cv, &inside, inside.cy + inside.hh - level, FILL);
+	char text[16];
+	if (percent < 0) {
+		snprintf(text, sizeof(text), "--%%");
+	} else if (percent > 100) {
+		snprintf(text, sizeof(text), "100%%");
+	} else {
+		snprintf(text, sizeof(text), "%d%%", percent);
 	}
+	int tw = text_width(text, font_px);
 
-	// The bolt's box centred on the body; the bolt is 22 of its 24 units tall.
-	float kz = body.hh * 2.0f * BOLT_SCALE / 22.0f;
-	draw_zap(cv, body.cx - 12 * kz, body.cy - 12 * kz, kz, BOLT);
+	float ox = (float)cv->w - (float)pad - 22.0f * kz;
+	float oy = (float)pad + ((float)font_px - 24.0f * kz) * 0.5f;
+	if (oy < (float)pad) {
+		oy = (float)pad;
+	}
+	int zap_left = (int)lroundf(ox + 2.0f * kz);
+	int pen = zap_left - gap - tw;
+	if (pen < pad) {
+		pen = pad;
+	}
+	int baseline = pad + (int)lroundf((float)font_px * 0.8f);
 
-	char text[8];
-	snprintf(text, sizeof(text), "%d%%", percent);
-	int px = (int)(56 * u);
-	draw_text(cv, text, px, (int)cx, (int)(body.cy + body.hh + 34 * u + (float)px * 0.75f), TEXT);
+	draw_text_at(cv, text, font_px, pen, baseline, INK);
+	draw_zap(cv, ox, oy, kz, INK);
 }
 
 // ---------------------------------------------------------------------------
