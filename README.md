@@ -27,6 +27,19 @@ decode are upstream Sonix; graphic EQ / PEQ / MSEB are removed.
 Gone: streaming, Wi‑Fi / AirPlay / DLNA, Settings hub (EQ, themes, language,
 screensaver, …), browser, search, playlists UI, coverflow, games, ebooks.
 
+## Screens
+
+| Home | Settings |
+|:---:|:---:|
+| <img src="docs/screens/01-home.png" width="240" alt="Home"> | <img src="docs/screens/02-settings.png" width="240" alt="Settings"> |
+| **Artists** | **Genres** |
+| <img src="docs/screens/03-artists.png" width="240" alt="Artists"> | <img src="docs/screens/04-genres.png" width="240" alt="Genres"> |
+
+<p align="center">
+  <img src="docs/screens/05-nowplaying.png" width="240" alt="Now Playing">
+  <br>Now Playing
+</p>
+
 ## How it works
 
 The player binary replaces HiBy’s on the stock R1 rootfs. The packer in
