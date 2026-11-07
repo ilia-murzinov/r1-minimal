@@ -1,62 +1,34 @@
 ﻿# R1 Minimal
 
-My HiBy R1 build of [Sonix](https://github.com/Jepl4r/sonix-player) — cut down
-for a local library on a microSD card. Play music, find it by artist or genre,
-pair Bluetooth, flip USB between disk and ADB. That’s about it.
+I run a HiBy R1 as a plain DAP: music on a card, headphones, done. Stock
+firmware is noisy. Full [Sonix](https://github.com/Jepl4r/sonix-player) is
+wonderful and heavier than I need. This is the middle — Sonix, stripped to
+what I actually touch.
 
-Stock HiBy and full Sonix carry a lot I don’t use. This keeps the B&W player
-and drops the rest.
+![The five screens](docs/screens/banner.png)
 
-<p align="center">
-  <img src="docs/screens/05-nowplaying.png" width="200" alt="Now Playing">
-  &nbsp;
-  <img src="docs/screens/01-home.png" width="200" alt="Home">
-</p>
+Four tiles on the home screen. Now Playing for the track. Artists and Genres
+to dig through the library (scan with a tap if the card is empty; long-press
+to rescan). Settings for brightness, Bluetooth, and ADB — MSC is the default
+so the card shows up as a disk when you plug in.
 
-Home is four big tiles: **Now Playing**, **Settings**, **Artists**, **Genres**.
-Artists go artist → album → song. Genres go genre → artist → album → song
-(each album is that artist’s full set). Empty card? Tap Artists or Genres to
-scan; long-press either to rescan.
+Charge still caps at HiBy’s stock 80%. No streaming, no Wi‑Fi, no EQ toys, no
+second Settings planet.
 
-<p align="center">
-  <img src="docs/screens/03-artists.png" width="180" alt="Artists">
-  &nbsp;
-  <img src="docs/screens/04-genres.png" width="180" alt="Genres">
-  &nbsp;
-  <img src="docs/screens/02-settings.png" width="180" alt="Settings">
-</p>
+### Put it on the player
 
-Settings is short on purpose: brightness, Bluetooth, and **ADB** stuck at the
-bottom (MSC is the default so the card shows up as a disk). ADB and MSC don’t
-run together.
-
-Charge stops at HiBy’s stock **80%** limit. Decode and Bluetooth are still
-upstream Sonix — no graphic EQ / PEQ / MSEB here.
-
-Not in this build: streaming, Wi‑Fi, AirPlay, DLNA, the big Settings hub,
-browser, search, playlists UI, coverflow, games, ebooks.
-
-## Flash
-
-The binary replaces HiBy’s player on the stock R1 rootfs. `sonix-packer/`
-unwraps a stock `r1.upt`, drops `sonix_player` in, and builds a new image.
+1. Download [`r1.upt`](https://github.com/ilia-murzinov/r1-minimal/releases/tag/v0.1.0)
+   from the release.
+2. Copy it to the **root** of the microSD card.
+3. `bootmode.sh Recovery` over ADB, then reboot and let Recovery flash it.
 
 ```text
-build → packer → r1.upt on the microSD root → bootmode.sh Recovery → reboot
+build → packer → r1.upt on the card → Recovery → reboot
 ```
 
-Grab `r1.upt` from the
-[release](https://github.com/ilia-murzinov/r1-minimal/releases/tag/v0.1.0).
-Soft bind over ADB (`deploy/bind_min.sh`) dies on a full power cycle — flash
-again for that.
+There’s also a soft bind over ADB (`deploy/`) for day-to-day hacking. It does
+not survive a full power cycle — flash when you want it to stick.
 
-## Credits
-
-Upstream: [Jepl4r/sonix-player](https://github.com/Jepl4r/sonix-player)
-(GPL-3.0).
-
-Thanks to [@Tartarus6](https://github.com/Tartarus6),
-[@noisetta](https://github.com/noisetta),
-[@endgame47](https://github.com/endgame47),
-[@hkhrithik007](https://github.com/hkhrithik007), and everyone in that
-community.
+Built on [Jepl4r/sonix-player](https://github.com/Jepl4r/sonix-player)
+(GPL-3.0). Thanks to Tartarus6, noisetta, endgame47, hkhrithik007, and the
+rest of that crew.
