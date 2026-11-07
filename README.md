@@ -1,76 +1,62 @@
 ﻿# R1 Minimal
 
-A personal **HiBy R1** cut of
-[Jepl4r/sonix-player](https://github.com/Jepl4r/sonix-player).
+My HiBy R1 build of [Sonix](https://github.com/Jepl4r/sonix-player) — cut down
+for a local library on a microSD card. Play music, find it by artist or genre,
+pair Bluetooth, flip USB between disk and ADB. That’s about it.
 
-Stock HiBy firmware and full Sonix are heavy for a local library player.
-This fork keeps the bits that matter on an R1 used as a DAP with an SD card:
-play music, browse the library, Bluetooth, and a short Settings page for USB
-modes. Everything else is stripped so the UI stays small and B&W.
-
-## What you get
-
-Home is four tiles:
-
-| | |
-|---|---|
-| **NOW PLAYING** | transport, queue, track details |
-| **SETTINGS** | Brightness, Bluetooth + USB; **ADB** pinned at the bottom (MSC by default) |
-| **ARTISTS** | artist → album → song |
-| **GENRES** | genre → artist → album → song (albums are the artist’s full set) |
-
-Empty library: tap Artists or Genres to scan; long-press either to rescan.
-
-Charge stops at the stock **80%** limit (AXP REG64 ≈ 4.20 V). Bluetooth and
-decode are upstream Sonix; graphic EQ / PEQ / MSEB are removed.
-
-Gone: streaming, Wi‑Fi / AirPlay / DLNA, Settings hub (EQ, themes, language,
-screensaver, …), browser, search, playlists UI, coverflow, games, ebooks.
-
-## Screens
-
-| Home | Settings |
-|:---:|:---:|
-| <img src="docs/screens/01-home.png" width="240" alt="Home"> | <img src="docs/screens/02-settings.png" width="240" alt="Settings"> |
-| **Artists** | **Genres** |
-| <img src="docs/screens/03-artists.png" width="240" alt="Artists"> | <img src="docs/screens/04-genres.png" width="240" alt="Genres"> |
+Stock HiBy and full Sonix carry a lot I don’t use. This keeps the B&W player
+and drops the rest.
 
 <p align="center">
-  <img src="docs/screens/05-nowplaying.png" width="240" alt="Now Playing">
-  <br>Now Playing
+  <img src="docs/screens/05-nowplaying.png" width="200" alt="Now Playing">
+  &nbsp;
+  <img src="docs/screens/01-home.png" width="200" alt="Home">
 </p>
 
-## How it works
+Home is four big tiles: **Now Playing**, **Settings**, **Artists**, **Genres**.
+Artists go artist → album → song. Genres go genre → artist → album → song
+(each album is that artist’s full set). Empty card? Tap Artists or Genres to
+scan; long-press either to rescan.
 
-The player binary replaces HiBy’s on the stock R1 rootfs. The packer in
-`sonix-packer/` unpacks a stock `r1.upt`, drops `sonix_player` into the
-squashfs, and rebuilds `r1.upt`. Flash that image from Recovery (there is no
-in-app firmware update page here).
+<p align="center">
+  <img src="docs/screens/03-artists.png" width="180" alt="Artists">
+  &nbsp;
+  <img src="docs/screens/04-genres.png" width="180" alt="Genres">
+  &nbsp;
+  <img src="docs/screens/02-settings.png" width="180" alt="Settings">
+</p>
+
+Settings is short on purpose: brightness, Bluetooth, and **ADB** stuck at the
+bottom (MSC is the default so the card shows up as a disk). ADB and MSC don’t
+run together.
+
+Charge stops at HiBy’s stock **80%** limit. Decode and Bluetooth are still
+upstream Sonix — no graphic EQ / PEQ / MSEB here.
+
+Not in this build: streaming, Wi‑Fi, AirPlay, DLNA, the big Settings hub,
+browser, search, playlists UI, coverflow, games, ebooks.
+
+## Flash
+
+The binary replaces HiBy’s player on the stock R1 rootfs. `sonix-packer/`
+unwraps a stock `r1.upt`, drops `sonix_player` in, and builds a new image.
 
 ```text
-build binary → packer → r1.upt on microSD root → bootmode.sh Recovery → reboot
+build → packer → r1.upt on the microSD root → bootmode.sh Recovery → reboot
 ```
 
-Soft deploy (ADB on, until reboot only): bind-mount the new binary over
-`/usr/bin/sonix_player` via `deploy/bind_min.sh` + `deploy/watch_min.sh`.
-A full power cycle needs a real `r1.upt` flash again.
-
-USB: MSC for the card as a disk; flip **ADB** in Settings when you need a
-shell. They stay exclusive.
+Grab `r1.upt` from the
+[release](https://github.com/ilia-murzinov/r1-minimal/releases/tag/v0.1.0).
+Soft bind over ADB (`deploy/bind_min.sh`) dies on a full power cycle — flash
+again for that.
 
 ## Credits
 
 Upstream: [Jepl4r/sonix-player](https://github.com/Jepl4r/sonix-player)
 (GPL-3.0).
 
-Special thanks to:
-
-[@Tartarus6](https://github.com/Tartarus6)
-
-[@noisetta](https://github.com/noisetta)
-
-[@endgame47](https://github.com/endgame47)
-
-[@hkhrithik007](https://github.com/hkhrithik007)
-
-and all the members of this fantastic community!!
+Thanks to [@Tartarus6](https://github.com/Tartarus6),
+[@noisetta](https://github.com/noisetta),
+[@endgame47](https://github.com/endgame47),
+[@hkhrithik007](https://github.com/hkhrithik007), and everyone in that
+community.
