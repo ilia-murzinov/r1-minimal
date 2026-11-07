@@ -5,20 +5,19 @@ Local library on microSD. B&W UI. Stock rootfs + replaced `sonix_player`.
 
 ![UI](docs/screens/banner.png)
 
-## Scope
+## What it does
 
-| | |
+| Area | Capability |
 |---|---|
-| **Home** | Now Playing · Settings · Artists · Genres |
-| **Artists** | artist → album → song |
-| **Genres** | genre → artist → album → song (album = that artist’s full set) |
-| **Library** | tap Artists/Genres to scan; long-press to rescan |
-| **Settings** | brightness, Bluetooth, USB; **ADB** at bottom (MSC default; exclusive with ADB) |
-| **Charge** | stock 80% limit (AXP REG64 ≈ 4.20 V) |
-| **Audio** | upstream Sonix decode + Bluetooth; no graphic EQ / PEQ / MSEB |
-
-Removed: streaming, Wi‑Fi / AirPlay / DLNA, Settings hub, browser, search,
-playlists UI, coverflow, games, ebooks.
+| Home | Four tiles: Now Playing, Settings, Artists, Genres |
+| Now Playing | Transport, queue position, cover, track metadata |
+| Artists | artist → album → song |
+| Genres | genre → artist → album → song (album = that artist’s full set) |
+| Library | Tap Artists or Genres to scan; long-press either to rescan |
+| Settings | Brightness, Bluetooth, USB modes |
+| USB | MSC (card as disk, default) or ADB (shell); exclusive |
+| Charge | Stock 80% limit (AXP REG64 ≈ 4.20 V) |
+| Playback | Upstream Sonix decode + Bluetooth output |
 
 ## Flash
 
@@ -30,8 +29,6 @@ Release asset: [`r1.upt`](https://github.com/ilia-murzinov/r1-minimal/releases/t
 
 Soft deploy (until reboot): `deploy/bind_min.sh` + `deploy/watch_min.sh`
 bind-mounts over `/usr/bin/sonix_player`. Power cycle needs a real UPT flash.
-
-USB: MSC = card as disk; Settings → ADB for shell. Mutually exclusive.
 
 ## Credits
 
