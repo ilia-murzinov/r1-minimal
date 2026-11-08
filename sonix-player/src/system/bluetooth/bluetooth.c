@@ -111,6 +111,7 @@ typedef enum {
 	JOB_REFRESH,
 	JOB_PAIR,
 	JOB_CONNECT,
+	JOB_RECONNECT_LAST, // go back to bt_last_device (grace + retries)
 	JOB_DISCONNECT,
 	JOB_FORGET,
 	JOB_CODECS,		  // re-read what the connected sink offers
@@ -2053,10 +2054,18 @@ static bool pair_and_connect(const char *mac) {
 // or fight the receiver for the radio. The paired list is refreshed after
 // every attempt, which is when a device that connected meanwhile shows up in
 // it; the sending stream is read from the signal cache and is current.
+// Set by bluetooth_reconnect_cancel(); cleared when the reconnect job finishes.
+static bool g_reconnect_cancel;
+
 static bool reconnect_should_stop(const char *mac) {
 	// Called between every wait of the reconnect, which makes it the place a
 	// rename typed meanwhile goes out instead of waiting for the whole of it.
 	apply_renames();
+
+	if (g_reconnect_cancel) {
+		fprintf(stderr, "bluetooth: reconnect to %s cancelled\n", mac);
+		return true;
+	}
 
 	char other[BT_MAC_MAX];
 	if (btstack_audio_sink(other, sizeof(other)) && strcasecmp(other, mac) != 0) {
@@ -2099,7 +2108,8 @@ static bool reconnect_should_stop(const char *mac) {
 	return user_waiting;
 }
 
-static void reconnect_last(void) {
+// True when the last device is on the audio sink (or came back by itself).
+static bool reconnect_last(void) {
 	char mac[BT_MAC_MAX];
 	snprintf(mac, sizeof(mac), "%s", config_get("wireless", BT_LAST_DEVICE_KEY, ""));
 	if (!mac[0]) {
@@ -2107,13 +2117,18 @@ static void reconnect_last(void) {
 		// and "there is nothing written down to reconnect to" look identical
 		// from the outside and are fixed in completely different places.
 		fprintf(stderr, "bluetooth: no last device on file; nothing to go back to\n");
-		return;
+		return false;
+	}
+
+	if (g_reconnect_cancel) {
+		fprintf(stderr, "bluetooth: reconnect to %s cancelled before start\n", mac);
+		return false;
 	}
 
 	char sink[BT_MAC_MAX];
 	if (btstack_audio_sink(sink, sizeof(sink))) {
 		fprintf(stderr, "bluetooth: %s came back on its own\n", sink);
-		return;
+		return strcasecmp(sink, mac) == 0;
 	}
 
 	// Only if it is still a paired device: an address that has been forgotten
@@ -2131,14 +2146,14 @@ static void reconnect_last(void) {
 			break;
 		}
 		if (reconnect_should_stop(mac)) {
-			return;
+			return false;
 		}
 		sleep_ms(500);
 		refresh_devices();
 	}
 	if (!paired) {
 		fprintf(stderr, "bluetooth: %s is not in the paired list; not going back to it\n", mac);
-		return;
+		return false;
 	}
 
 	// First, a moment to come back by themselves -- which is what headphones do
@@ -2148,10 +2163,10 @@ static void reconnect_last(void) {
 	for (int waited = 0; waited < SELF_RECONNECT_GRACE_MS; waited += 250) {
 		if (btstack_audio_sink(sink, sizeof(sink)) && strcasecmp(sink, mac) == 0) {
 			fprintf(stderr, "bluetooth: %s came back on its own after %d ms\n", mac, waited);
-			return;
+			return true;
 		}
 		if (reconnect_should_stop(mac)) {
-			return;
+			return false;
 		}
 		sleep_ms(250);
 	}
@@ -2164,21 +2179,22 @@ static void reconnect_last(void) {
 		// connect_device() took seconds, and this is the last moment before a
 		// command goes out that could tear down somebody else's link.
 		if (reconnect_should_stop(mac)) {
-			return;
+			return false;
 		}
 		fprintf(stderr, "bluetooth: going back to %s (attempt %d)\n", mac, attempt);
 		connect_device(mac);
 
 		if (btstack_audio_sink(sink, sizeof(sink)) && strcasecmp(sink, mac) == 0) {
 			fprintf(stderr, "bluetooth: %s is back with audio\n", mac);
-			return;
+			return true;
 		}
 		if (reconnect_should_stop(mac)) {
-			return;
+			return false;
 		}
 		sleep_ms(1500);
 	}
 	fprintf(stderr, "bluetooth: %s did not come back with an audio profile after three tries\n", mac);
+	return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -3051,6 +3067,22 @@ static void *bluetooth_worker(void *arg) {
 				refresh_devices();
 				break;
 
+			case JOB_RECONNECT_LAST: {
+				char mac[BT_MAC_MAX];
+				snprintf(mac, sizeof(mac), "%s", config_get("wireless", BT_LAST_DEVICE_KEY, ""));
+				name_for(mac, name, sizeof(name));
+				bool ok = reconnect_last();
+				refresh_devices();
+				bool cancelled = g_reconnect_cancel;
+				g_reconnect_cancel = false;
+				if (cancelled) {
+					set_op(BT_OP_IDLE, NULL);
+				} else {
+					set_op(ok ? BT_OP_OK : BT_OP_FAILED, name[0] ? name : NULL);
+				}
+				break;
+			}
+
 			case JOB_DISCONNECT:
 				name_for(job.mac, name, sizeof(name));
 				// Logged, because in the log a link closed from here and a
@@ -3414,6 +3446,48 @@ void bluetooth_pair(const char *mac) { post_device_job(JOB_PAIR, mac); }
 void bluetooth_connect(const char *mac) { post_device_job(JOB_CONNECT, mac); }
 void bluetooth_disconnect(const char *mac) { post_device_job(JOB_DISCONNECT, mac); }
 void bluetooth_forget(const char *mac) { post_device_job(JOB_FORGET, mac); }
+
+bool bluetooth_last_device(char *name_out, size_t name_size) {
+	if (!name_out || name_size == 0) {
+		return false;
+	}
+	name_out[0] = '\0';
+	char mac[BT_MAC_MAX];
+	snprintf(mac, sizeof(mac), "%s", config_get("wireless", BT_LAST_DEVICE_KEY, ""));
+	if (!mac[0]) {
+		return false;
+	}
+	name_for(mac, name_out, name_size);
+	return true;
+}
+
+bool bluetooth_reconnect_last(void) {
+	if (!worker_running || !bluetooth_available()) {
+		return false;
+	}
+	char mac[BT_MAC_MAX];
+	snprintf(mac, sizeof(mac), "%s", config_get("wireless", BT_LAST_DEVICE_KEY, ""));
+	if (!mac[0]) {
+		return false;
+	}
+	char name[BT_NAME_MAX];
+	name_for(mac, name, sizeof(name));
+	g_reconnect_cancel = false;
+	set_op(BT_OP_BUSY, name);
+
+	// Off → on already ends in reconnect_last(); the follow-up job reports the
+	// outcome (and is a no-op succeed if power-on already brought them back).
+	if (!bluetooth_get_enabled()) {
+		bluetooth_set_enabled(true);
+	}
+	job_t job = {.type = JOB_RECONNECT_LAST};
+	post_job(&job);
+	return true;
+}
+
+void bluetooth_reconnect_cancel(void) {
+	g_reconnect_cancel = true;
+}
 
 bool bluetooth_rename(const char *mac, const char *name) {
 	if (!mac || !mac[0] || !name) {

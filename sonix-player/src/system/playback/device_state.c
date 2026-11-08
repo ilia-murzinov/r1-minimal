@@ -129,7 +129,10 @@ static uint32_t remember_now_ms(void) {
 	return (uint32_t)(ts.tv_sec * 1000u + ts.tv_nsec / 1000000u);
 }
 
-static bool remember_enabled(void) { return config_get_int("player", "remember_track", 0) != 0; }
+// Minimal R1 has no Music-settings toggle for this: the last track (and its
+// position) always comes back after a reboot. The stock key is left unread so
+// an old device_config.ini with remember_track=0 cannot turn it off.
+static bool remember_enabled(void) { return true; }
 
 // A track this player must not offer to come back to: a live stream has no
 // position, and a streaming cache file will not exist at the next boot.

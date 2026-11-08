@@ -681,8 +681,9 @@ static void poll_cb(lv_timer_t *timer) {
 	}
 
 	// While a pairing is in flight its own watcher owns the result: consuming
-	// it here too would mean whichever timer ran first swallowed it.
-	if (pairing_watch_active()) {
+	// it here too would mean whichever timer ran first swallowed it. Same for a
+	// topbar long-press reconnect, which shows its own connecting toast.
+	if (pairing_watch_active() || topbar_bt_reconnect_pending()) {
 		return;
 	}
 

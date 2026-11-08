@@ -45,9 +45,19 @@ static lv_timer_t *hide_timer;
 
 // The busy card's spinner, alive only while it shows.
 static lv_obj_t *busy_spinner;
+static lv_obj_t *cancel_btn;
+static lv_obj_t *cancel_label;
+static void (*busy_on_cancel)(void);
 // The busy card is about work that carries on without anybody watching it, so
 // a tap off the card may put it away (toast_busy_dismissable).
 static bool busy_dismissable;
+
+static void hide_cancel_button(void) {
+	busy_on_cancel = NULL;
+	if (cancel_btn) {
+		lv_obj_set_hidden(cancel_btn, true);
+	}
+}
 
 static void toast_dismiss(void) {
 	if (busy_spinner) {
@@ -57,6 +67,7 @@ static void toast_dismiss(void) {
 		lv_obj_delete(busy_spinner);
 		busy_spinner = NULL;
 		busy_dismissable = false;
+		hide_cancel_button();
 	}
 	if (veil) {
 		lv_obj_set_hidden(veil, true);
@@ -74,6 +85,26 @@ static void hide_cb(lv_timer_t *timer) {
 static void veil_cb(lv_event_t *e) {
 	(void)e;
 	toast_dismiss();
+}
+
+static void cancel_btn_cb(lv_event_t *e) {
+	(void)e;
+	void (*cb)(void) = busy_on_cancel;
+	busy_on_cancel = NULL;
+	// End the busy card first so the callback can open another toast.
+	if (busy_spinner) {
+		lv_obj_delete(busy_spinner);
+		busy_spinner = NULL;
+	}
+	busy_dismissable = false;
+	hide_cancel_button();
+	if (veil) {
+		lv_obj_set_hidden(veil, true);
+	}
+	lv_timer_pause(hide_timer);
+	if (cb) {
+		cb();
+	}
 }
 
 void toast_init(gui_config_t *cfg) {
@@ -124,6 +155,23 @@ void toast_init(gui_config_t *cfg) {
 	lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
 	lv_obj_set_width(label, lv_pct(100));
 
+	// Optional Cancel under a busy toast (toast_busy_cancel). Hidden otherwise.
+	cancel_btn = lv_btn_create(card);
+	lv_obj_set_width(cancel_btn, lv_pct(100));
+	lv_obj_set_height(cancel_btn, 56);
+	lv_obj_set_style_radius(cancel_btn, 12, 0);
+	lv_obj_set_style_border_width(cancel_btn, 0, 0);
+	lv_obj_set_style_shadow_width(cancel_btn, 0, 0);
+	lv_obj_add_style(cancel_btn, &theme_style_switch, 0);
+	lv_obj_set_hidden(cancel_btn, true);
+	lv_obj_add_event_cb(cancel_btn, cancel_btn_cb, LV_EVENT_CLICKED, NULL);
+
+	cancel_label = lv_label_create(cancel_btn);
+	lv_label_set_text(cancel_label, tr("cancel"));
+	lv_obj_set_style_text_font(cancel_label, &font_ui_24, 0);
+	lv_obj_set_style_text_color(cancel_label, theme()->text_primary, 0);
+	lv_obj_center(cancel_label);
+
 	hide_timer = lv_timer_create(hide_cb, TOAST_MS, NULL);
 	lv_timer_pause(hide_timer);
 }
@@ -166,6 +214,7 @@ static void show(const lv_image_dsc_t *glyph, lv_color_t colour, const char *tex
 		busy_spinner = NULL;
 	}
 	busy_dismissable = false;
+	hide_cancel_button();
 
 	const char *shown = text ? tr(text) : "";
 	if (glyph) {
@@ -198,6 +247,7 @@ void toast_busy(const char *text) {
 		return;
 	}
 	busy_dismissable = false;
+	hide_cancel_button();
 	lv_timer_pause(hide_timer);
 	lv_obj_set_hidden(icon, true);
 	if (!busy_spinner) {
@@ -212,13 +262,26 @@ void toast_busy(const char *text) {
 }
 
 void toast_busy_end(void) {
-	if (!busy_spinner) {
+	if (!busy_spinner && (!cancel_btn || lv_obj_is_hidden(cancel_btn))) {
 		return;
 	}
-	lv_obj_delete(busy_spinner);
-	busy_spinner = NULL;
+	if (busy_spinner) {
+		lv_obj_delete(busy_spinner);
+		busy_spinner = NULL;
+	}
 	busy_dismissable = false;
+	hide_cancel_button();
 	lv_obj_set_hidden(veil, true);
+}
+
+void toast_busy_cancel(const char *text, void (*on_cancel)(void)) {
+	toast_busy(text);
+	busy_on_cancel = on_cancel;
+	if (cancel_btn) {
+		lv_label_set_text(cancel_label, tr("cancel"));
+		lv_obj_set_style_text_color(cancel_label, theme()->text_primary, 0);
+		lv_obj_set_hidden(cancel_btn, false);
+	}
 }
 
 void toast_busy_dismissable(const char *text) {

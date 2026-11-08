@@ -2243,14 +2243,13 @@ int main(int argc, char **argv) {
 	// the first frame is the now-playing page, so the track is put back here,
 	// before it, and the page opened over the home screen without the slide.
 	// The artwork still arrives from its worker a moment later.
-	if (config_get_int("player", "remember_track", 0)) {
-		if (config_get_bool("music", "nowplaying_at_boot", false)) {
-			if (restore_saved_track()) {
-				player_sheet_open(false);
-			}
-		} else {
-			lv_timer_create(restore_track_timer_cb, 600, NULL);
+	// Minimal R1 always restores the last track (see remember_enabled()).
+	if (config_get_bool("music", "nowplaying_at_boot", false)) {
+		if (restore_saved_track()) {
+			player_sheet_open(false);
 		}
+	} else {
+		lv_timer_create(restore_track_timer_cb, 600, NULL);
 	}
 
 

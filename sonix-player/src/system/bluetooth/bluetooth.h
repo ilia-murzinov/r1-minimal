@@ -2,6 +2,7 @@
 #define BLUETOOTH_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 // The Bluetooth radio, driven by the player itself.
@@ -111,6 +112,19 @@ void bluetooth_pair(const char *mac);
 void bluetooth_connect(const char *mac);
 void bluetooth_disconnect(const char *mac);
 void bluetooth_forget(const char *mac);
+
+// The headphones last used on this player: fills `name_out` with the display
+// name (or the MAC if the list is not up yet). False when nothing is on file.
+bool bluetooth_last_device(char *name_out, size_t name_size);
+
+// Go back to those headphones. Turns the radio on first when it is off. Marks
+// the op busy so the UI can toast progress; result is BT_OP_OK / BT_OP_FAILED.
+// False when nothing is on file (caller should say so).
+bool bluetooth_reconnect_last(void);
+
+// Stops an in-flight bluetooth_reconnect_last(). The worker drops the attempt
+// at the next wait; the op goes idle rather than failed, so the UI stays quiet.
+void bluetooth_reconnect_cancel(void);
 // The name a paired device is shown under on this player. An empty name gives
 // it back the one it announces itself. False when Bluetooth is off.
 bool bluetooth_rename(const char *mac, const char *name);

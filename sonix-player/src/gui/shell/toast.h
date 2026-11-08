@@ -38,6 +38,10 @@ void toast_glyph(const lv_image_dsc_t *glyph, const char *text);
 void toast_busy(const char *text);
 void toast_busy_end(void);
 
+// Like toast_busy, with a Cancel button under the text. `on_cancel` runs after
+// the card is down (may be NULL). A tap off the card does not cancel.
+void toast_busy_cancel(const char *text, void (*on_cancel)(void));
+
 // The same card for work that goes on in the background whether or not
 // anybody waits for it: a tap off the card puts it away, and the work carries
 // on. toast_busy_showing() says whether it is still up -- put away by a tap,

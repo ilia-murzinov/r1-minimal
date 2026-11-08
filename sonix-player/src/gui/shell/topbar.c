@@ -15,6 +15,8 @@
 #include "src/gui/shell/switcher.h"
 #include "src/gui/nowplaying/player.h"
 #include "src/gui/shell/theme.h"
+#include "src/gui/shell/toast.h"
+#include "src/system/core/lang.h"
 #include "src/system/audio/alsa-controls.h"
 #include "src/system/audio/audio.h"
 #include "src/system/audio/usbaudio.h"
@@ -72,6 +74,8 @@ static void refresh_play_icon(const device_state_t *state);
 static lv_obj_t *clock_label;
 static lv_obj_t *bt_icon;   // bluetooth, leftmost of the right-hand group
 static lv_obj_t *home_icon; // tap → main menu (Minimal R1)
+static lv_timer_t *bt_reconnect_timer; // watches long-press reconnect outcome
+static bool bt_reconnect_watching;
 static lv_obj_t *container_left;  // volume group (and the clock, when "left")
 static lv_obj_t *container_right; // battery group (and the clock, when "right")
 static lv_timer_t *battery_timer;
@@ -252,29 +256,26 @@ static void refresh_headphone_icon(void) {
 	lv_obj_remove_local_style_prop(hp_icon, LV_STYLE_IMAGE_RECOLOR_OPA, 0);
 }
 
-// The two radios, immediately left of the charge percentage: bluetooth first,
-// then wifi, so switching one on never moves the other. Each is hidden while
-// its radio is off and drawn at RADIO_IDLE_OPA while the radio is up with
-// nothing on the other end, which is the difference between the wifi being on
-// and the wifi being connected.
+// Bluetooth left of the charge percentage. Always shown when the radio exists
+// so it can be long-pressed (reconnect last device): off is the dimmest
+// reading, on-but-idle is RADIO_IDLE_OPA, connected is full.
 void topbar_refresh_radios(void) {
-	if (bt_icon) {
-		// Bringing the
-		// Bluetooth stack back up takes the best part of ten seconds, and a
-		// status bar that stays empty for all of them looks like the switch did
-		// nothing.
-		if (!bluetooth_get_enabled()) {
-			lv_obj_set_hidden(bt_icon, true);
-		} else {
-			lv_obj_set_hidden(bt_icon, false);
-			lv_obj_set_style_image_opa(bt_icon,
-									   bluetooth_get_state() == BT_STATE_CONNECTED ? LV_OPA_COVER : RADIO_IDLE_OPA, 0);
-
-			// B&W minimal: no codec-family tint on the glyph.
-			lv_obj_remove_local_style_prop(bt_icon, LV_STYLE_IMAGE_RECOLOR, 0);
-			lv_obj_remove_local_style_prop(bt_icon, LV_STYLE_IMAGE_RECOLOR_OPA, 0);
-		}
+	if (!bt_icon) {
+		return;
 	}
+	if (!bluetooth_available()) {
+		lv_obj_set_hidden(bt_icon, true);
+		return;
+	}
+	lv_obj_set_hidden(bt_icon, false);
+	lv_opa_t opa = LV_OPA_20;
+	if (bluetooth_get_enabled()) {
+		opa = bluetooth_get_state() == BT_STATE_CONNECTED ? LV_OPA_COVER : RADIO_IDLE_OPA;
+	}
+	lv_obj_set_style_image_opa(bt_icon, opa, 0);
+	// B&W minimal: no codec-family tint on the glyph.
+	lv_obj_remove_local_style_prop(bt_icon, LV_STYLE_IMAGE_RECOLOR, 0);
+	lv_obj_remove_local_style_prop(bt_icon, LV_STYLE_IMAGE_RECOLOR_OPA, 0);
 }
 
 // How long the check glyph stays once a Detect changes run is over.
@@ -530,6 +531,81 @@ static void home_icon_cb(lv_event_t *e) {
 	switch_screen_no_history(main_menu_screen);
 }
 
+bool topbar_bt_reconnect_pending(void) { return bt_reconnect_watching; }
+
+static void bt_reconnect_stop_watch(void) {
+	bt_reconnect_watching = false;
+	if (bt_reconnect_timer) {
+		lv_timer_pause(bt_reconnect_timer);
+	}
+}
+
+static void bt_reconnect_cancel_cb(void) {
+	bt_reconnect_stop_watch();
+	bluetooth_reconnect_cancel();
+	topbar_refresh_radios();
+}
+
+static void bt_reconnect_poll_cb(lv_timer_t *timer) {
+	(void)timer;
+	if (!bt_reconnect_watching) {
+		return;
+	}
+	char name[BT_NAME_MAX];
+	bt_op_t op = bluetooth_take_op_result(name, sizeof(name));
+	if (op != BT_OP_OK && op != BT_OP_FAILED) {
+		return;
+	}
+	bt_reconnect_stop_watch();
+	topbar_refresh_radios();
+
+	if (op == BT_OP_OK) {
+		if (name[0]) {
+			char message[BT_NAME_MAX + 32];
+			snprintf(message, sizeof(message), tr("bt_connected_to"), name);
+			toast_success(message);
+		} else {
+			toast_success("bt_device_connected");
+		}
+		return;
+	}
+	gui_notify_popup("bt_connect_failed");
+}
+
+// Long-press: reconnect the last headphones. No tap action — Settings owns
+// the on/off switch.
+static void bt_icon_long_cb(lv_event_t *e) {
+	(void)e;
+	lv_indev_t *indev = lv_indev_active();
+	if (indev) {
+		lv_indev_wait_release(indev);
+	}
+	if (!bluetooth_available()) {
+		gui_notify_popup("bt_bluetooth_not_available");
+		return;
+	}
+
+	char name[BT_NAME_MAX];
+	if (!bluetooth_last_device(name, sizeof(name))) {
+		toast_plain("bt_no_last_device");
+		return;
+	}
+	if (!bluetooth_reconnect_last()) {
+		toast_plain("bt_no_last_device");
+		return;
+	}
+
+	char message[BT_NAME_MAX + 40];
+	snprintf(message, sizeof(message), tr("bt_connecting_to"), name);
+	toast_busy_cancel(message, bt_reconnect_cancel_cb);
+	bt_reconnect_watching = true;
+	if (bt_reconnect_timer) {
+		lv_timer_resume(bt_reconnect_timer);
+		lv_timer_ready(bt_reconnect_timer);
+	}
+	topbar_refresh_radios();
+}
+
 // Nothing inside the bar takes a press; the bar does.
 //
 // Every press on the status bar has one meaning -- pull the control centre down
@@ -642,7 +718,8 @@ void topbar_init(gui_config_t *cfg) {
 	lv_obj_set_flex_flow(container_right, LV_FLEX_FLOW_ROW);
 	lv_obj_set_flex_align(container_right, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
-	// Bluetooth first (hidden until connected), then charge % and battery shell.
+	// Bluetooth first (always shown when the radio exists — long-press reconnect),
+	// then charge % and battery shell.
 	bt_icon = lv_image_create(container_right);
 	lv_image_set_src(bt_icon, &icon_bluetooth_status);
 	lv_obj_add_style(bt_icon, &theme_style_icon, 0);
@@ -736,6 +813,17 @@ void topbar_init(gui_config_t *cfg) {
 	lv_obj_set_clickable(home_icon, true);
 	lv_obj_set_ext_click_area(home_icon, 12);
 	lv_obj_add_event_cb(home_icon, home_icon_cb, LV_EVENT_CLICKED, NULL);
+
+	// Same for Bluetooth: clear_child_presses just walked it, so clickability
+	// is put back here (needed for LONG_PRESSED). Minimal R1 has no
+	// control-centre drag on the bar, so a hittable glyph is fine.
+	lv_obj_set_clickable(bt_icon, true);
+	lv_obj_set_ext_click_area(bt_icon, 12);
+	lv_obj_add_event_cb(bt_icon, bt_icon_long_cb, LV_EVENT_LONG_PRESSED, NULL);
+
+	bt_reconnect_timer = lv_timer_create(bt_reconnect_poll_cb, 250, NULL);
+	lv_timer_pause(bt_reconnect_timer);
+	power_pause_in_standby(bt_reconnect_timer);
 
 	// The battery shell is recoloured by hand rather than by a style, so it needs
 	// a repaint when the palette changes.

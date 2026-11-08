@@ -20,12 +20,15 @@ void topbar_refresh_volume(int percent);
 // changes rather than letting the glyph lag behind the button.
 void topbar_refresh_playback(void);
 
-// Repaints the two radio glyphs, left of the battery: bluetooth first, then
-// wifi, then the charge percentage. Each appears only while its radio is on,
-// and is drawn dimmed while that radio is up but connected to nothing -- the
-// same reading as iOS's, and cheaper than a second colour. Called on its own
-// timer, and straight away by the pages that switch a radio.
+// Repaints the Bluetooth glyph left of the battery. Shown whenever the radio
+// exists (long-press reconnects last device): dimmest while off, idle-dim
+// while on with nothing connected, full while connected. Called on its own
+// timer, and straight away by the pages that switch the radio.
 void topbar_refresh_radios(void);
+
+// True while a topbar long-press reconnect is waiting on bluetooth_take_op_result.
+// The Bluetooth settings page skips its own result toast in that case.
+bool topbar_bt_reconnect_pending(void);
 
 // Detect changes, right of play/pause: the search glyph while the card is being
 // looked over, the check glyph for a few seconds once the run is over, then
