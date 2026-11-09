@@ -378,6 +378,25 @@ bool btstack_audio_source(char *address_out, size_t size) {
 // reading a properties dictionary
 // ---------------------------------------------------------------------------
 
+// True when `s` is only twelve hex digits with optional ':' / '-' / spaces --
+// the shape bluez uses as Alias when the device never told it a name.
+static bool looks_like_bt_address(const char *s) {
+	int hex = 0;
+	if (!s) {
+		return false;
+	}
+	for (const char *p = s; *p; p++) {
+		if (*p == ':' || *p == '-' || *p == ' ') {
+			continue;
+		}
+		if (!isxdigit((unsigned char)*p)) {
+			return false;
+		}
+		hex++;
+	}
+	return hex == 12;
+}
+
 // One a{sv}, with the keys this player cares about picked out and everything
 // else stepped over by signature. `dev` may be NULL to read only for the side
 // effects (there are none) -- it is passed NULL by nothing today.
@@ -386,6 +405,12 @@ static void read_device_props(dbus_reader_t *r, btstack_device_t *dev) {
 	if (!dbus_r_array_begin(r, "{sv}", &props)) {
 		return;
 	}
+	// Alias and Name are collected separately: bluez fills Alias with the
+	// address itself when it has nothing better, and that used to win over a
+	// real remote Name ("AirPods Pro"), so the list and the reconnect toast
+	// showed a MAC.
+	char alias[BT_DEV_NAME_MAX] = "";
+	char remote_name[BT_DEV_NAME_MAX] = "";
 	while (dbus_r_array_more(r, &props)) {
 		char key[64], sig[16];
 		if (!dbus_r_string(r, key, sizeof(key)) || !dbus_r_signature(r, sig, sizeof(sig))) {
@@ -394,15 +419,10 @@ static void read_device_props(dbus_reader_t *r, btstack_device_t *dev) {
 
 		if (strcmp(key, "Address") == 0 && strcmp(sig, "s") == 0) {
 			dbus_r_string(r, dev->address, sizeof(dev->address));
-		} else if ((strcmp(key, "Alias") == 0 || strcmp(key, "Name") == 0) && strcmp(sig, "s") == 0) {
-			// Alias is what the user sees everywhere else, and bluez falls it
-			// back to Name itself, so whichever arrives is the right answer --
-			// except that Alias must win when both do.
-			char text[BT_DEV_NAME_MAX];
-			dbus_r_string(r, text, sizeof(text));
-			if (text[0] && (strcmp(key, "Alias") == 0 || !dev->name[0])) {
-				snprintf(dev->name, sizeof(dev->name), "%s", text);
-			}
+		} else if (strcmp(key, "Alias") == 0 && strcmp(sig, "s") == 0) {
+			dbus_r_string(r, alias, sizeof(alias));
+		} else if (strcmp(key, "Name") == 0 && strcmp(sig, "s") == 0) {
+			dbus_r_string(r, remote_name, sizeof(remote_name));
 		} else if (strcmp(key, "Paired") == 0 && strcmp(sig, "b") == 0) {
 			dbus_r_bool(r, &dev->paired);
 		} else if (strcmp(key, "Trusted") == 0 && strcmp(sig, "b") == 0) {
@@ -435,6 +455,19 @@ static void read_device_props(dbus_reader_t *r, btstack_device_t *dev) {
 		} else if (!dbus_r_skip(r, sig)) {
 			return;
 		}
+	}
+
+	// A real Alias (user rename, or bluez already mirroring Name) wins. An
+	// Alias that is only the address gives way to Name. Either address-shaped
+	// value is still kept as a last resort so a paired row is never nameless.
+	if (alias[0] && !looks_like_bt_address(alias)) {
+		snprintf(dev->name, sizeof(dev->name), "%s", alias);
+	} else if (remote_name[0] && !looks_like_bt_address(remote_name)) {
+		snprintf(dev->name, sizeof(dev->name), "%s", remote_name);
+	} else if (alias[0]) {
+		snprintf(dev->name, sizeof(dev->name), "%s", alias);
+	} else if (remote_name[0]) {
+		snprintf(dev->name, sizeof(dev->name), "%s", remote_name);
 	}
 }
 

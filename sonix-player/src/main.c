@@ -1980,8 +1980,8 @@ int main(int argc, char **argv) {
 	// The equalizer's bands and switch, before any playback can start.
 	eq_init();
 	// Gapless playback, before anything can start: the engine reads this at
-	// the end of every track.
-	audio_set_gapless(config_get_int("audio", "gapless", 0) != 0);
+	// the end of every track. On by default; audio.gapless=0 turns it off.
+	audio_set_gapless(config_get_int("audio", "gapless", 1) != 0);
 	clock_init();
 	adb_apply_saved_state();
 	// The buttons on the headset cable: the kernel module starts disabled and

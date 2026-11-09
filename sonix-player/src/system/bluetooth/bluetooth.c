@@ -1742,17 +1742,35 @@ static void do_scan_stop(void) {
 // ---------------------------------------------------------------------------
 
 #define BT_LAST_DEVICE_KEY "bt_last_device"
+#define BT_LAST_DEVICE_NAME_KEY "bt_last_device_name"
+
+static void name_for(const char *mac, char *out, size_t size);
 
 static void remember_last_device(const char *mac) {
 	if (!mac || !mac[0]) {
 		return;
 	}
+	char name[BT_NAME_MAX];
+	name_for(mac, name, sizeof(name));
+	// Only a friendly name is worth keeping: the address is already in
+	// bt_last_device, and writing it here would make the reconnect toast show
+	// a MAC even after bluez later learns "AirPods".
+	bool good_name = name[0] && !name_is_just_address(name, mac);
+
 	const char *known = config_get("wireless", BT_LAST_DEVICE_KEY, "");
-	if (strcasecmp(known, mac) == 0) {
-		return; // already what it says: no write, no card wear
+	const char *known_name = config_get("wireless", BT_LAST_DEVICE_NAME_KEY, "");
+	bool changed = false;
+	if (strcasecmp(known, mac) != 0) {
+		config_set("wireless", BT_LAST_DEVICE_KEY, mac);
+		changed = true;
 	}
-	config_set("wireless", BT_LAST_DEVICE_KEY, mac);
-	config_save();
+	if (good_name && strcmp(known_name, name) != 0) {
+		config_set("wireless", BT_LAST_DEVICE_NAME_KEY, name);
+		changed = true;
+	}
+	if (changed) {
+		config_save();
+	}
 }
 
 // Forgetting a device has to forget it here too. Without this the address stays
@@ -1767,6 +1785,7 @@ static void forget_last_device(const char *mac) {
 		return;
 	}
 	config_set("wireless", BT_LAST_DEVICE_KEY, "");
+	config_set("wireless", BT_LAST_DEVICE_NAME_KEY, "");
 	config_save();
 	fprintf(stderr, "bluetooth: %s was the last device; nothing to go back to now\n", mac);
 }
@@ -2815,26 +2834,37 @@ static void do_set_volume(int percent) {
 	}
 }
 
-// The name of a known device, for the toast. Falls back to the address.
+// The name of a known device, for the toast. Prefers a real friendly name from
+// the live lists, then the one saved with bt_last_device (needed while the
+// stack is down and g_paired is empty), and only then the address.
 static void name_for(const char *mac, char *out, size_t size) {
 	snprintf(out, size, "%s", mac);
 
 	pthread_mutex_lock(&lock);
 	for (int i = 0; i < g_paired_count; i++) {
-		if (strcasecmp(g_paired[i].mac, mac) == 0) {
+		if (strcasecmp(g_paired[i].mac, mac) == 0 && g_paired[i].name[0] &&
+			!name_is_just_address(g_paired[i].name, mac)) {
 			snprintf(out, size, "%s", g_paired[i].name);
 			pthread_mutex_unlock(&lock);
 			return;
 		}
 	}
 	for (int i = 0; i < g_found_count; i++) {
-		if (strcasecmp(g_found[i].mac, mac) == 0) {
+		if (strcasecmp(g_found[i].mac, mac) == 0 && g_found[i].name[0] &&
+			!name_is_just_address(g_found[i].name, mac)) {
 			snprintf(out, size, "%s", g_found[i].name);
 			pthread_mutex_unlock(&lock);
 			return;
 		}
 	}
 	pthread_mutex_unlock(&lock);
+
+	if (strcasecmp(config_get("wireless", BT_LAST_DEVICE_KEY, ""), mac) == 0) {
+		const char *saved = config_get("wireless", BT_LAST_DEVICE_NAME_KEY, "");
+		if (saved[0] && !name_is_just_address(saved, mac)) {
+			snprintf(out, size, "%s", saved);
+		}
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -3005,6 +3035,10 @@ static void *bluetooth_worker(void *arg) {
 			char active_name[BT_NAME_MAX];
 			name_for(active_mac, active_name, sizeof(active_name));
 			airpods_set_device(active_mac, active_name);
+			// Connect can beat the remote name request; once bluez has a real
+			// name, write it down so a later long-press (stack down, empty
+			// paired list) still toasts "AirPods" instead of the MAC.
+			remember_last_device(active_mac);
 		} else {
 			airpods_set_device(NULL, NULL);
 		}
